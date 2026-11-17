@@ -4,17 +4,75 @@
     Layout = null;
 }
 
-<link href="~/lib/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
+<!DOCTYPE html>
+<html lang="tr">
+@await Component.InvokeAsync("_RegisterStyleComponentPartial", new { title = "Giriş Yap" })
+<body>
 
-<div class="container">
-    <br /><br />
-    <form method="post">
-        <label>Kullanıcı Adınız</label>
-        <input type="text" asp-for="Username" class="form-control" />
-        <br />
-        <label>Şifreniz</label>
-        <input type="password" asp-for="Password" class="form-control" />
-        <br />
-        <button type="submit" class="btn btn-primary">Giriş Yap</button>
-    </form>
-</div>
+    <div class="auth-bg" aria-hidden="true"><span class="g1"></span><span class="g2"></span><span class="g3"></span></div>
+
+    <main class="auth-page">
+        <div class="auth-card">
+
+            @await Component.InvokeAsync("_RegisterBrandComponentPartial")
+
+            <section class="auth-form-wrap">
+                <div class="form-head">
+                    <h1>Giriş Yap</h1>
+                    <p>Mailora hesabınıza giriş yapın ve mesajlarınıza kaldığınız yerden devam edin.</p>
+                    <div class="switch-link">Hesabınız yok mu? <a asp-controller="Register" asp-action="SignUp">Kayıt Ol</a></div>
+                </div>
+
+                <partial name="_AuthMessages" />
+
+                <form asp-controller="Login" asp-action="SignIn" asp-route-returnUrl="@ViewBag.ReturnUrl" method="post" novalidate>
+                    <div asp-validation-summary="All" class="server-alert"></div>
+
+                    <div class="form-grid">
+                        <div class="field span-2">
+                            <label asp-for="Username">Kullanıcı Adı</label>
+                            <div class="input-wrap">
+                                <i class="bi bi-at lead"></i>
+                                <input class="a-input" asp-for="Username" type="text" placeholder="Kullanıcı adınız"
+                                       autocomplete="username" spellcheck="false" autocapitalize="none" autofocus>
+                            </div>
+                        </div>
+
+                        <div class="field span-2">
+                            <label asp-for="Password">Şifre</label>
+                            <div class="input-wrap">
+                                <i class="bi bi-lock lead"></i>
+                                <input class="a-input has-eye" asp-for="Password" type="password" placeholder="Şifreniz" autocomplete="current-password">
+                                <button type="button" class="eye-btn" data-eye="Password" aria-label="Şifreyi göster" title="Şifreyi göster"><i class="bi bi-eye"></i></button>
+                            </div>
+                        </div>
+
+                        <div class="span-2">
+                            <label class="remember"><input type="checkbox" class="m-check" asp-for="RememberMe"> Beni hatırla</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary-x">
+                        <span class="lbl">Giriş Yap</span><i class="bi bi-arrow-right"></i>
+                    </button>
+
+                    <div class="secure-note"><i class="bi bi-shield-check"></i> Oturumunuz şifreli bağlantı ile korunur.</div>
+                    <div class="form-foot">Hesabınız yok mu? <a asp-controller="Register" asp-action="SignUp">Kayıt Ol</a></div>
+                </form>
+            </section>
+        </div>
+    </main>
+
+    <script>
+            // Şifre göster / gizle
+            document.querySelectorAll('[data-eye]').forEach(btn => btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.eye);
+                const show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+                btn.title = show ? 'Şifreyi gizle' : 'Şifreyi göster';
+                btn.setAttribute('aria-label', btn.title);
+            }));
+    </script>
+</body>
+</html>

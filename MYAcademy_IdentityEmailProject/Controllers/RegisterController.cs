@@ -1,34 +1,39 @@
-﻿using MailKit;
-using MailKit.Net.Smtp;
+﻿using System.Security.Cryptography;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using MimeKit;
 using MYAcademy_IdentityEmailProject.Entities;
 using MYAcademy_IdentityEmailProject.Models;
+using MYAcademy_IdentityEmailProject.Services;
 
 namespace MYAcademy_IdentityEmailProject.Controllers
 {
     public class RegisterController : Controller
     {
         private readonly UserManager<AppUser> _userManager;
-        private readonly IConfiguration _configuration;
+        private readonly IMailService _mailService;
 
-        public RegisterController(UserManager<AppUser> userManager, IConfiguration configuration)
+        public RegisterController(UserManager<AppUser> userManager, IMailService mailService)
         {
             _userManager = userManager;
-            _configuration = configuration;
+            _mailService = mailService;
         }
 
+        [HttpGet]
         public IActionResult SignUp()
         {
             return View();
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> SignUp(UserRegisterViewModel userRegisterViewModel)
         {
-            Random random = new Random();
-            int validCode = random.Next(100000, 1000000);
+            if (!ModelState.IsValid)
+            {
+                return View(userRegisterViewModel);
+            }
+
+            int validCode = GenerateValidCode();
 
             AppUser appUser = new AppUser()
             {
@@ -41,36 +46,107 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
             var result = await _userManager.CreateAsync(appUser, userRegisterViewModel.Password);
 
-            if (result.Succeeded)
+            if (!result.Succeeded)
             {
-                var smtpSettings = _configuration.GetSection("SmtpSettings");
-
-                MimeMessage mimeMessage = new MimeMessage();
-
-                MailboxAddress mailboxAddressFrom = new MailboxAddress(smtpSettings["SenderName"], smtpSettings["Username"]);
-                mimeMessage.From.Add(mailboxAddressFrom);
-
-                MailboxAddress mailboxAddressTo = new MailboxAddress("User", userRegisterViewModel.Email);
-                mimeMessage.To.Add(mailboxAddressTo);
-
-                mimeMessage.Subject = "Email Doğrulama Kodu";
-
-                var bodyBuilder = new BodyBuilder();
-                bodyBuilder.TextBody = "Sisteme giriş yapabilmek için gerekli olan doğrulama kodu: " + validCode;
-                mimeMessage.Body = bodyBuilder.ToMessageBody();
-
-                using var smtpClient = new SmtpClient();
-                smtpClient.Connect(smtpSettings["Host"], int.Parse(smtpSettings["Port"]!), false);
-                smtpClient.Authenticate(smtpSettings["Username"], smtpSettings["Password"]);
-                smtpClient.Send(mimeMessage);
-                smtpClient.Disconnect(true);
-
-                return RedirectToAction("SignIn", "Login");
-                //Burada yönlendirme mail aktivasyon sayfasına gidecek.
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+                return View(userRegisterViewModel);
             }
-            else
+
+            await TrySendValidCodeAsync(appUser.Email!, validCode);
+            return RedirectToAction("ConfirmEmail", new { email = appUser.Email });
+        }
+
+        [HttpGet]
+        public IActionResult ConfirmEmail(string? email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
             {
-                return View();
+                return RedirectToAction("SignUp");
+            }
+            return View(new ConfirmEmailViewModel { Email = email });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ConfirmEmail(ConfirmEmailViewModel confirmEmailViewModel)
+        {
+            if (!ModelState.IsValid)
+            {
+                return View(confirmEmailViewModel);
+            }
+
+            var user = await _userManager.FindByEmailAsync(confirmEmailViewModel.Email);
+
+            if (user != null && user.EmailConfirmed)
+            {
+                TempData["InfoMessage"] = "Hesabınız zaten doğrulanmış. Giriş yapabilirsiniz.";
+                return RedirectToAction("SignIn", "Login");
+            }
+
+            if (user == null || user.ValidCode == null || user.ValidCode.ToString() != confirmEmailViewModel.Code)
+            {
+                ModelState.AddModelError(string.Empty, "Doğrulama kodu hatalı.");
+                return View(confirmEmailViewModel);
+            }
+
+            user.EmailConfirmed = true;
+            user.ValidCode = null;
+            await _userManager.UpdateAsync(user);
+
+            TempData["SuccessMessage"] = "Hesabınız doğrulandı. Artık giriş yapabilirsiniz.";
+            return RedirectToAction("SignIn", "Login");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResendCode(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+
+            if (user != null && !user.EmailConfirmed)
+            {
+                int validCode = GenerateValidCode();
+                user.ValidCode = validCode;
+                await _userManager.UpdateAsync(user);
+
+                if (await TrySendValidCodeAsync(user.Email!, validCode))
+                {
+                    TempData["InfoMessage"] = "Yeni doğrulama kodu e-posta adresinize gönderildi.";
+                }
+            }
+
+            return RedirectToAction("ConfirmEmail", new { email });
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> CheckUserName(string userName)
+        {
+            var user = await _userManager.FindByNameAsync(userName);
+            return Json(new { available = user == null });
+        }
+
+        private static int GenerateValidCode()
+        {
+            return RandomNumberGenerator.GetInt32(100000, 1000000);
+        }
+
+        private async Task<bool> TrySendValidCodeAsync(string email, int validCode)
+        {
+            string body = "Merhaba,\n\n"
+                        + "Mailora hesabınızı doğrulamak için kodunuz: " + validCode + "\n\n"
+                        + "Bu işlemi siz yapmadıysanız bu e-postayı dikkate almayın.";
+            try
+            {
+                await _mailService.SendAsync(email, "Mailora · E-posta Doğrulama Kodu", body);
+                return true;
+            }
+            catch
+            {
+                TempData["ErrorMessage"] = "Doğrulama kodu gönderilemedi. Lütfen \"Kodu tekrar gönder\" ile yeniden deneyin.";
+                return false;
             }
         }
     }

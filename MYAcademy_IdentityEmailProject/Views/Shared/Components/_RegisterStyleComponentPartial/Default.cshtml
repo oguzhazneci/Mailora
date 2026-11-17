@@ -1,7 +1,7 @@
 ﻿<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kayıt Ol · Mailora</title>
+    <title>@ViewBag.Title · Mailora</title>
 
   <!-- Bootstrap 5 + Bootstrap Icons + Font (CDN) -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -455,5 +455,60 @@
         @@media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     }
+            /* =========================================================
+                   SUNUCU MESAJLARI (Identity hataları ve bilgilendirmeler)
+                   ========================================================= */
+            .server-alert {
+                display: flex;
+                gap: 10px;
+                align-items: flex-start;
+                padding: 12px 14px;
+                border-radius: 13px;
+                font-size: 13px;
+                font-weight: 500;
+                line-height: 1.5;
+                margin-bottom: 18px;
+                border: 1px solid #EFAFC3;
+                background: #FFF8FA;
+                color: var(--danger);
+            }
+
+                .server-alert ul {
+                    margin: 0;
+                    padding-left: 18px;
+                }
+
+                .server-alert.validation-summary-valid {
+                    display: none;
+                }
+
+                .server-alert.info {
+                    border-color: #D9D3F5;
+                    background: var(--lavender);
+                    color: var(--accent-dark);
+                }
+
+                .server-alert.success {
+                    border-color: #A9DEC7;
+                    background: var(--mint);
+                    color: var(--success);
+                }
+
+            .code-input {
+                text-align: center;
+                font-size: 24px !important;
+                font-weight: 800;
+                letter-spacing: 10px;
+            }
+
+            .remember {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 13px;
+                font-weight: 600;
+                color: #5D6075;
+                cursor: pointer;
+            }
   </style>
 </head>

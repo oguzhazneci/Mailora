@@ -1,13 +1,27 @@
 using Microsoft.AspNetCore.Identity;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
+using MYAcademy_IdentityEmailProject.Models;
+using MYAcademy_IdentityEmailProject.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add services to the container.
+builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
+{
+    options.SignIn.RequireConfirmedEmail = true;
+    options.User.RequireUniqueEmail = true;
+    options.Password.RequiredLength = 8;
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+})
+    .AddEntityFrameworkStores<EmailContext>()
+    .AddDefaultTokenProviders()
+    .AddErrorDescriber<CustomIdentityValidator>();
 
-builder.Services.AddIdentity<AppUser, IdentityRole>().AddEntityFrameworkStores<EmailContext>().AddDefaultTokenProviders();// Add services to the container.
 builder.Services.AddControllersWithViews();
 builder.Services.AddDbContext<EmailContext>();
+builder.Services.AddScoped<IMailService, MailService>();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {

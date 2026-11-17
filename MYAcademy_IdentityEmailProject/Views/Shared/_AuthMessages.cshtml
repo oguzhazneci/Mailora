@@ -1,0 +1,12 @@
+﻿@if (TempData["SuccessMessage"] is string successMessage)
+{
+    <div class="server-alert success"><i class="bi bi-check2-circle"></i><span>@successMessage</span></div>
+}
+@if (TempData["InfoMessage"] is string infoMessage)
+{
+    <div class="server-alert info"><i class="bi bi-info-circle"></i><span>@infoMessage</span></div>
+}
+@if (TempData["ErrorMessage"] is string errorMessage)
+{
+    <div class="server-alert"><i class="bi bi-exclamation-circle"></i><span>@errorMessage</span></div>
+}

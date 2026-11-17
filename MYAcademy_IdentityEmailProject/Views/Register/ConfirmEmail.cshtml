@@ -1,0 +1,63 @@
+﻿@model ConfirmEmailViewModel
+
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="tr">
+@await Component.InvokeAsync("_RegisterStyleComponentPartial", new { title = "E-posta Doğrulama" })
+<body>
+
+    <div class="auth-bg" aria-hidden="true"><span class="g1"></span><span class="g2"></span><span class="g3"></span></div>
+
+    <main class="auth-page">
+        <div class="auth-card">
+
+            @await Component.InvokeAsync("_RegisterBrandComponentPartial")
+
+            <section class="auth-form-wrap">
+                <div class="form-head">
+                    <h1>E-posta Doğrulama</h1>
+                    <p><b>@Model.Email</b> adresine 6 haneli bir doğrulama kodu gönderdik. Hesabınızı etkinleştirmek için kodu aşağıya girin.</p>
+                </div>
+
+                <partial name="_AuthMessages" />
+
+                <form asp-controller="Register" asp-action="ConfirmEmail" method="post" novalidate>
+                    <div asp-validation-summary="All" class="server-alert"></div>
+                    <input type="hidden" asp-for="Email" />
+
+                    <div class="field">
+                        <label asp-for="Code">Doğrulama Kodu</label>
+                        <div class="input-wrap">
+                            <i class="bi bi-shield-check lead"></i>
+                            <input class="a-input code-input" asp-for="Code" type="text" inputmode="numeric" maxlength="6"
+                                   autocomplete="one-time-code" placeholder="••••••" autofocus>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary-x">
+                        <span class="lbl">Hesabımı Doğrula</span><i class="bi bi-arrow-right"></i>
+                    </button>
+                </form>
+
+                <form asp-controller="Register" asp-action="ResendCode" method="post" style="margin-top:10px">
+                    <input type="hidden" name="email" value="@Model.Email" />
+                    <button type="submit" class="btn-ghost" style="width:100%">
+                        <i class="bi bi-arrow-repeat"></i> Kodu tekrar gönder
+                    </button>
+                </form>
+
+                <div class="form-foot">Hesabınızı zaten doğruladınız mı? <a asp-controller="Login" asp-action="SignIn">Giriş Yap</a></div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+            // Kod alanına yalnızca rakam girilebilsin
+            const codeInput = document.getElementById('Code');
+            codeInput.addEventListener('input', () => codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6));
+    </script>
+</body>
+</html>

@@ -1,14 +1,13 @@
 ﻿<script>
     /* ======================================================================
-       MAILORA — REGISTER (yalnızca frontend doğrulama ve simülasyon)
-       Gerçek uygulamada: AccountController.Register (POST)
-       → UserManager.CreateAsync(user, model.Password) → e-posta doğrulama
+       MAILORA — REGISTER (istemci tarafı doğrulama)
+       Form geçerliyse RegisterController.SignUp (POST) çalışır
+       → UserManager.CreateAsync → 6 haneli kod e-postası → ConfirmEmail
        ====================================================================== */
     const $ = (s, r = document) => r.querySelector(s);
     const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
     const EMAIL_RE = /^[^\s@@<>()[\],;:"]+@@[^\s@@<>()[\],;:"]+\.[a-z]{2,}$/i;
-    const TAKEN_USERNAMES = ['admin', 'mailora', 'destek', 'ahmetyilmaz', 'root', 'info'];  // temsili: sunucu kontrolü simülasyonu
 
     /* Şifre kuralları — ASP.NET Core Identity PasswordOptions ile uyumlu */
     const PW_RULES = [
@@ -94,7 +93,7 @@
         return !err;
     }
 
-    /* Kullanıcı adı müsaitlik kontrolü (sunucu çağrısı simülasyonu) */
+    /* Kullanıcı adı müsaitlik kontrolü (RegisterController.CheckUserName) */
     function checkUserName() {
         const v = val('userName').trim();
         clearTimeout(userTimer);
@@ -102,12 +101,17 @@
         if (basicErr) { userCheck = { value: null, state: 'idle' }; if (touched.has('userName')) paint('userName'); return; }
         userCheck = { value: v.toLowerCase(), state: 'checking' };
         if (touched.has('userName')) paint('userName');
-        userTimer = setTimeout(() => {
+        userTimer = setTimeout(async () => {
+            let available = true;
+            try {
+                const res = await fetch('/Register/CheckUserName?userName=' + encodeURIComponent(v));
+                available = (await res.json()).available;
+            } catch (e) { /* sunucuya ulaşılamazsa kontrol POST sırasında sunucuda yapılır */ }
             if (userCheck.value !== v.toLowerCase()) return;
-            userCheck.state = TAKEN_USERNAMES.includes(v.toLowerCase()) ? 'taken' : 'available';
+            userCheck.state = available ? 'available' : 'taken';
             touched.add('userName');
             paint('userName');
-        }, 600);
+        }, 500);
     }
 
     /* ---------- Şifre gücü ---------- */
@@ -173,12 +177,6 @@
     }
     terms.addEventListener('change', () => paintTerms(false));
 
-    // Giriş Yap bağlantısı (Login ayrı bir sayfa olacak)
-    $$('[data-login-link]').forEach(a => a.addEventListener('click', e => {
-        e.preventDefault();
-        toast('Giriş sayfası', 'Login ekranı ayrı bir sayfa olarak hazırlanacak.', 'info', 'bi-box-arrow-in-right');
-    }));
-
     /* ---------- KVKK modal ---------- */
     const modal = $('#kvkkModal'), body = $('#kvkkBody');
     let lastFocus = null;
@@ -234,8 +232,11 @@
 
     /* ---------- Gönderim ---------- */
     form.addEventListener('submit', e => {
-        e.preventDefault();
-        if (userCheck.state === 'checking') { setTimeout(() => form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit')), 650); return; }
+        if (userCheck.state === 'checking') {
+            e.preventDefault();
+            setTimeout(() => form.requestSubmit ? form.requestSubmit() : form.submit(), 650);
+            return;
+        }
 
         KEYS.forEach(k => touched.add(k));
         const results = KEYS.map(k => paint(k, { shake: true }));
@@ -243,6 +244,7 @@
         const firstBad = KEYS.find((k, i) => !results[i]);
 
         if (firstBad || !terms.checked) {
+            e.preventDefault();
             const target = firstBad ? $('#' + firstBad) : terms;
             target.focus({ preventScroll: true });
             target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -251,48 +253,11 @@
             return;
         }
 
+        // Form geçerli: normal POST ile RegisterController.SignUp'a gider
         const btn = $('#submitBtn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-sm"></span><span class="lbl">Hesabınız oluşturuluyor…</span>';
-
-        // Simülasyon — şifre hiçbir yerde saklanmaz
-        const user = { firstName: val('firstName').trim(), email: val('email').trim() };
-        setTimeout(() => {
-            form.reset();
-            showSuccess(user);
-            toast('Hesabınız oluşturuldu! 🎉', 'Doğrulama e-postası gönderildi.', 'success', 'bi-check2-circle');
-        }, 1400);
     });
-
-    function showSuccess(user) {
-        const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        $('#registerView').innerHTML = `
-            <div class="success-view">
-              <div class="success-ic"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 25l7 7 15-16"/></svg></div>
-              <h2>Hoş geldiniz, ${esc(user.firstName)}!</h2>
-              <p>Mailora hesabınız başarıyla oluşturuldu. <b>${esc(user.email)}</b> adresine bir doğrulama bağlantısı gönderdik.</p>
-              <ol class="success-steps">
-                <li><span>1</span> Gelen kutunuzdaki doğrulama e-postasını açın</li>
-                <li><span>2</span> “Hesabımı Doğrula” bağlantısına tıklayın</li>
-                <li><span>3</span> Giriş yaparak Mailora’yı kullanmaya başlayın</li>
-              </ol>
-              <button type="button" class="btn-primary-x" style="margin-top:0" data-login-link><span class="lbl">Giriş Yap</span><i class="bi bi-arrow-right"></i></button>
-              <button type="button" class="btn-ghost" style="width:100%;margin-top:10px" id="resendBtn"><i class="bi bi-arrow-repeat"></i> Doğrulama e-postasını tekrar gönder</button>
-            </div>`;
-        $('[data-login-link]', $('#registerView')).addEventListener('click', () =>
-            toast('Giriş sayfası', 'Login ekranı ayrı bir sayfa olarak hazırlanacak.', 'info', 'bi-box-arrow-in-right'));
-        $('#resendBtn').addEventListener('click', e => {
-            const b = e.currentTarget;
-            b.disabled = true;
-            toast('E-posta gönderildi', `${user.email} adresini kontrol edin.`, 'success', 'bi-envelope-check');
-            let s = 30;
-            const tick = setInterval(() => {
-                b.innerHTML = `<i class="bi bi-clock"></i> Tekrar göndermek için ${s--} sn`;
-                if (s < 0) { clearInterval(tick); b.disabled = false; b.innerHTML = '<i class="bi bi-arrow-repeat"></i> Doğrulama e-postasını tekrar gönder'; }
-            }, 1000);
-        });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
 
     /* ---------- Başlangıç ---------- */
     renderRules();

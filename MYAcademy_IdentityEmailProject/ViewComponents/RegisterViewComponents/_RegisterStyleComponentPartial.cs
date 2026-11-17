@@ -4,8 +4,9 @@ namespace MYAcademy_IdentityEmailProject.ViewComponents.RegisterViewComponents
 {
     public class _RegisterStyleComponentPartial : ViewComponent
     {
-        public IViewComponentResult Invoke()
+        public IViewComponentResult Invoke(string title)
         {
+            ViewBag.Title = title;
             return View();
         }
     }
