@@ -21,6 +21,13 @@ builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
     .AddDefaultTokenProviders()
     .AddErrorDescriber<CustomIdentityValidator>();
 
+// Şifre sıfırlama (ve e-posta değiştirme) bağlantıları 1 saat geçerli.
+// Varsayılan süre 1 gündür.
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    options.TokenLifespan = TimeSpan.FromHours(1);
+});
+
 builder.Services.AddControllersWithViews(options =>
 {
     // Varsayılan kural: her controller ve action için giriş zorunlu.
