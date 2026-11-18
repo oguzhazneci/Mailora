@@ -1,3 +1,18 @@
 ﻿@{
-    Layout = null;
+    Layout = "_ErrorLayout";
+    ViewData["Title"] = "Erişim Engellendi";
 }
+
+<div class="error-icon"><i class="bi bi-slash-circle"></i></div>
+<div class="error-code">403</div>
+<h1>Bu işlem için yetkiniz yok</h1>
+<p>Görüntülemeye çalıştığınız içeriğe hesabınızın erişim izni bulunmuyor.</p>
+
+<div class="error-actions">
+    <a class="btn-primary-x" asp-controller="Home" asp-action="Index">
+        <span class="lbl">Ana Sayfaya Dön</span><i class="bi bi-arrow-right"></i>
+    </a>
+    <button type="button" class="btn-ghost" onclick="history.back()">
+        <i class="bi bi-arrow-left"></i> Geri Dön
+    </button>
+</div>

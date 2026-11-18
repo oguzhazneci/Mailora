@@ -17,6 +17,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             _userManager = userManager;
         }
 
+        [AllowAnonymous]
         [HttpGet]
         public IActionResult SignIn(string? returnUrl = null)
         {
@@ -28,6 +29,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return View();
         }
 
+        [AllowAnonymous]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SignIn(UserLoginViewModel userLoginViewModel, string? returnUrl = null)

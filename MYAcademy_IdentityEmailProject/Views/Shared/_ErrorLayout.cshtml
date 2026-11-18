@@ -1,0 +1,20 @@
+﻿<!DOCTYPE html>
+<html lang="tr">
+@await Component.InvokeAsync("_RegisterStyleComponentPartial", new { title = ViewData["Title"]?.ToString() ?? "Hata" })
+<body>
+
+    <div class="auth-bg" aria-hidden="true"><span class="g1"></span><span class="g2"></span><span class="g3"></span></div>
+
+    <main class="auth-page">
+        <div class="error-card">
+            <a class="brand" asp-controller="Home" asp-action="Index" aria-label="Mailora ana sayfa">
+                <span class="brand-logo"><i class="bi bi-envelope-paper-heart-fill"></i></span>
+                <span class="brand-name">Mail<span>ora</span></span>
+            </a>
+
+            @RenderBody()
+        </div>
+    </main>
+
+</body>
+</html>

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.Identity;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
@@ -19,7 +21,16 @@ builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
     .AddDefaultTokenProviders()
     .AddErrorDescriber<CustomIdentityValidator>();
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    // Varsayılan kural: her controller ve action için giriş zorunlu.
+    // Açık olması gerekenler [AllowAnonymous] ile işaretlenir.
+    var policy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+    options.Filters.Add(new AuthorizeFilter(policy));
+});
+
 builder.Services.AddDbContext<EmailContext>();
 builder.Services.AddScoped<IMailService, MailService>();
 
@@ -28,6 +39,19 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/Login/SignIn";
     options.AccessDeniedPath = "/ErrorPages/Page403";
     options.ExpireTimeSpan = TimeSpan.FromDays(7);
+
+    // Yönlendirme yerine boş gövdeli 401/403 dön;
+    // UseStatusCodePagesWithReExecute bunları Page401/Page403'e bağlar.
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
 });
 
 var app = builder.Build();
@@ -39,6 +63,10 @@ if (!app.Environment.IsDevelopment())
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
+
+// Boş gövdeli hata yanıtlarında (404, 403, 401) kendi hata sayfamızı göster.
+// ReExecute: adres çubuğu ve durum kodu korunur.
+app.UseStatusCodePagesWithReExecute("/ErrorPages/Page{0}");
 
 app.UseHttpsRedirection();
 app.UseRouting();

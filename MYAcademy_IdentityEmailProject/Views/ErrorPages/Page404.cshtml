@@ -1,3 +1,18 @@
 ﻿@{
-    Layout = null;
+    Layout = "_ErrorLayout";
+    ViewData["Title"] = "Sayfa Bulunamadı";
 }
+
+<div class="error-icon"><i class="bi bi-signpost-split"></i></div>
+<div class="error-code">404</div>
+<h1>Aradığınız sayfa bulunamadı</h1>
+<p>Adres yanlış yazılmış ya da sayfa kaldırılmış olabilir.</p>
+
+<div class="error-actions">
+    <a class="btn-primary-x" asp-controller="Home" asp-action="Index">
+        <span class="lbl">Ana Sayfaya Dön</span><i class="bi bi-arrow-right"></i>
+    </a>
+    <button type="button" class="btn-ghost" onclick="history.back()">
+        <i class="bi bi-arrow-left"></i> Geri Dön
+    </button>
+</div>

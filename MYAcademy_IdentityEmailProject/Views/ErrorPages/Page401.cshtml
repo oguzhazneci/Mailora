@@ -1,3 +1,18 @@
 ﻿@{
-    Layout = null;
+    Layout = "_ErrorLayout";
+    ViewData["Title"] = "Giriş Gerekli";
 }
+
+<div class="error-icon"><i class="bi bi-shield-lock"></i></div>
+<div class="error-code">401</div>
+<h1>Bu sayfa için giriş yapmalısınız</h1>
+<p>Açmaya çalıştığınız sayfa yalnızca Mailora hesabıyla görüntülenebilir. Giriş yaptıktan sonra kaldığınız yere geri döneceksiniz.</p>
+
+<div class="error-actions">
+    <a class="btn-primary-x" asp-controller="Login" asp-action="SignIn" asp-route-returnUrl="@ViewBag.ReturnUrl">
+        <span class="lbl">Giriş Yap</span><i class="bi bi-arrow-right"></i>
+    </a>
+    <a class="btn-ghost" asp-controller="Register" asp-action="SignUp">
+        <i class="bi bi-person-plus"></i> Hesap Oluştur
+    </a>
+</div>
