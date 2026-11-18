@@ -1,10 +1,11 @@
-﻿@model List<MYAcademy_IdentityEmailProject.Entities.Message>
+﻿@model List<MYAcademy_IdentityEmailProject.Entities.MailboxItem>
+@* KÖPRÜ (5.6): 9. aşamada tasarımlı haliyle yeniden yazılacak. *@
 
 @foreach (var item in Model)
 {
     <tr>
-        <td>@item.ReceiverEmail</td>
-        <td>@item.Subject</td>
-        <td>@item.SendDate.ToString("dd.MM.yyyy HH:mm")</td>
+        <td>@string.Join(", ", item.Message.Recipients.Select(r => r.Email))</td>
+        <td>@item.Message.Subject</td>
+        <td>@item.Message.SentDate?.ToString("dd.MM.yyyy HH:mm")</td>
     </tr>
 }

@@ -112,11 +112,121 @@ namespace MYAcademy_IdentityEmailProject.Migrations
 
                     b.Property<string>("CategoryName")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ColorCode")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
 
                     b.HasKey("CategoryId");
 
+                    b.HasIndex("CategoryName")
+                        .IsUnique();
+
                     b.ToTable("Categories");
+
+                    b.HasData(
+                        new
+                        {
+                            CategoryId = 1,
+                            CategoryName = "İş ve Kariyer",
+                            ColorCode = "#6F62C6"
+                        },
+                        new
+                        {
+                            CategoryId = 2,
+                            CategoryName = "Kişisel",
+                            ColorCode = "#3E9A77"
+                        },
+                        new
+                        {
+                            CategoryId = 3,
+                            CategoryName = "Finans",
+                            ColorCode = "#C8774A"
+                        },
+                        new
+                        {
+                            CategoryId = 4,
+                            CategoryName = "Sosyal ve Etkinlik",
+                            ColorCode = "#C2577A"
+                        },
+                        new
+                        {
+                            CategoryId = 5,
+                            CategoryName = "Bildirimler",
+                            ColorCode = "#4A7CC2"
+                        },
+                        new
+                        {
+                            CategoryId = 6,
+                            CategoryName = "Duyurular",
+                            ColorCode = "#B88A12"
+                        },
+                        new
+                        {
+                            CategoryId = 7,
+                            CategoryName = "Eğitim",
+                            ColorCode = "#2E8FA3"
+                        },
+                        new
+                        {
+                            CategoryId = 8,
+                            CategoryName = "Alışveriş",
+                            ColorCode = "#A855A8"
+                        },
+                        new
+                        {
+                            CategoryId = 9,
+                            CategoryName = "Seyahat",
+                            ColorCode = "#D35D47"
+                        },
+                        new
+                        {
+                            CategoryId = 10,
+                            CategoryName = "Teknoloji",
+                            ColorCode = "#5D6075"
+                        });
+                });
+
+            modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.MailboxItem", b =>
+                {
+                    b.Property<int>("MailboxItemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MailboxItemId"));
+
+                    b.Property<DateTime?>("DeletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Folder")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsStarred")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MessageId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("MailboxItemId");
+
+                    b.HasIndex("UserId", "Folder");
+
+                    b.HasIndex("MessageId", "UserId", "Folder")
+                        .IsUnique();
+
+                    b.ToTable("MailboxItems");
                 });
 
             modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Message", b =>
@@ -127,39 +237,71 @@ namespace MYAcademy_IdentityEmailProject.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MessageId"));
 
-                    b.Property<int>("CategoryId")
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("CategoryId")
                         .HasColumnType("int");
 
-                    b.Property<bool>("IsFavorite")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsRead")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("MessageDetail")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ReceiverEmail")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("SendDate")
+                    b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("SenderEmail")
+                    b.Property<string>("SenderId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("SentDate")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Subject")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime2");
 
                     b.HasKey("MessageId");
 
                     b.HasIndex("CategoryId");
 
+                    b.HasIndex("SenderId");
+
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.MessageRecipient", b =>
+                {
+                    b.Property<int>("MessageRecipientId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MessageRecipientId"));
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("MessageId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RecipientType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("MessageRecipientId");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("MessageRecipients");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -295,15 +437,59 @@ namespace MYAcademy_IdentityEmailProject.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.MailboxItem", b =>
+                {
+                    b.HasOne("MYAcademy_IdentityEmailProject.Entities.Message", "Message")
+                        .WithMany("MailboxItems")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MYAcademy_IdentityEmailProject.Entities.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Message");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Message", b =>
                 {
                     b.HasOne("MYAcademy_IdentityEmailProject.Entities.Category", "Category")
                         .WithMany("Messages")
                         .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MYAcademy_IdentityEmailProject.Entities.AppUser", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Category");
+
+                    b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.MessageRecipient", b =>
+                {
+                    b.HasOne("MYAcademy_IdentityEmailProject.Entities.Message", "Message")
+                        .WithMany("Recipients")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MYAcademy_IdentityEmailProject.Entities.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Message");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -360,6 +546,13 @@ namespace MYAcademy_IdentityEmailProject.Migrations
             modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Category", b =>
                 {
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Message", b =>
+                {
+                    b.Navigation("MailboxItems");
+
+                    b.Navigation("Recipients");
                 });
 #pragma warning restore 612, 618
         }

@@ -4,14 +4,25 @@ using MYAcademy_IdentityEmailProject.Entities;
 
 namespace MYAcademy_IdentityEmailProject.Context
 {
-    public class EmailContext:IdentityDbContext<AppUser>
+    public class EmailContext : IdentityDbContext<AppUser>
     {
-        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        // Bağlantı ayarları dışarıdan (Program.cs → appsettings.json) gelir.
+        public EmailContext(DbContextOptions<EmailContext> options) : base(options)
         {
-            optionsBuilder.UseSqlServer(@"Server=(localdb)\MSSQLLocalDB;initial Catalog=IdentityEmailDb;integrated Security=true;trust server certificate=true");
         }
 
         public DbSet<Category> Categories { get; set; }
         public DbSet<Message> Messages { get; set; }
+        public DbSet<MessageRecipient> MessageRecipients { get; set; }
+        public DbSet<MailboxItem> MailboxItems { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            // Identity tablolarının (AspNetUsers vb.) yapılandırması. Mutlaka ilk satır.
+            base.OnModelCreating(builder);
+
+            // Context/Configurations klasöründeki tüm IEntityTypeConfiguration sınıflarını uygular.
+            builder.ApplyConfigurationsFromAssembly(typeof(EmailContext).Assembly);
+        }
     }
 }

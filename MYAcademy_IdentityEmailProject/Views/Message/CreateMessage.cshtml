@@ -1,4 +1,4 @@
-﻿@model MYAcademy_IdentityEmailProject.Entities.Message
+﻿@model CreateMessageViewModel
 
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Mvc.Rendering
@@ -185,14 +185,14 @@
         </div>
 
         <!-- Editör (HTML içerik gizli Content alanına yazılır) -->
-        <div class="cmp-editor-wrap @ErrClass(nameof(Model.MessageDetail))" id="rowBody">
+        <div class="cmp-editor-wrap @ErrClass(nameof(Model.Body))" id="rowBody">
             <div class="cmp-editor" id="cmpEditor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Mesaj içeriği"
                  data-placeholder="Merhaba, mesajınızı buraya yazmaya başlayın…">
-                @Html.Raw(Model?.MessageDetail)
+                @Html.Raw(Model?.Body)
             </div>
-            <input type="hidden" asp-for="MessageDetail" id="cmpContent">
+            <input type="hidden" asp-for="Body" id="cmpContent">
             <div class="cmp-counter" id="cmpCounter">0 kelime · 0 karakter</div>
-            <div class="cmp-err">@ErrText(nameof(Model.MessageDetail))</div>
+            <div class="cmp-err">@ErrText(nameof(Model.Body))</div>
         </div>
 
         <!-- Alt işlem çubuğu -->

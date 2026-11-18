@@ -1,4 +1,4 @@
-﻿@model List<MYAcademy_IdentityEmailProject.Entities.Message>
+﻿@model List<MYAcademy_IdentityEmailProject.Entities.MailboxItem>
 @using System.Globalization
 @using System.Net
 @using System.Security.Claims
@@ -8,9 +8,9 @@
     ViewData["ActiveMenu"] = "inbox";          // Sidebar'daki data-page="inbox" / data-menu="inbox" linkini aktif yapar
     Layout = "~/Views/MessageLayout/Index.cshtml";
 
-    var messages = (Model ?? new List<MYAcademy_IdentityEmailProject.Entities.Message>())
-                   .OrderByDescending(m => m.SendDate)
-                   .ToList();
+    // KÖPRÜ (5.6): Model artık kullanıcının posta kutusu kopyaları (MailboxItem).
+    // Sıralama controller'da yapılıyor; 7. aşamada bu sayfa baştan yazılacak.
+    var messages = Model ?? new List<MYAcademy_IdentityEmailProject.Entities.MailboxItem>();
     var unreadCount = messages.Count(m => !m.IsRead);
     var userEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name ?? "";
 }
@@ -102,12 +102,14 @@
         <div class="msg-list" id="msgList">
             @foreach (var m in messages)
             {
-                var snippet = Snippet(m.MessageDetail);
-                var search = $"{m.SenderEmail} {m.SenderEmail} {m.Subject} {snippet}".ToLower(Tr);
-                var detailUrl = Url.Action("Detail", "Inbox", new { id = m.MessageId }) ?? $"/Inbox/Detail/{m.MessageId}";
+                var msg = m.Message;                              // içerik (Message)
+                var sentDate = msg.SentDate ?? msg.UpdatedDate;   // gelen kutusunda her zaman SentDate dolu
+                var snippet = Snippet(msg.Body);
+                var search = $"{msg.Sender.Email} {msg.Sender.Email} {msg.Subject} {snippet}".ToLower(Tr);
+                var detailUrl = Url.Action("Detail", "Inbox", new { id = msg.MessageId }) ?? $"/Inbox/Detail/{msg.MessageId}";
 
                 <article class="msg-item @(m.IsRead ? "" : "unread")"
-                         data-id="@m.MessageId"
+                         data-id="@msg.MessageId"
                          data-href="@detailUrl"
                          data-unread="@(m.IsRead ? "0" : "1")"
                     @*    data-starred="@(m.IsStarred ? "1" : "0")"
@@ -121,16 +123,16 @@
                             <i class="bi @(m.IsStarred ? "bi-star-fill" : "bi-star")"></i>
                         </button> *@
                     </div>
-                    <span class="avatar @AvatarColor(m.SenderEmail)">@Initials(m.SenderEmail)</span>
+                    <span class="avatar @AvatarColor(msg.Sender.Email)">@Initials(msg.Sender.Email)</span>
                     <div class="mi-sender">
-                        <span class="sender">@m.SenderEmail</span>
+                        <span class="sender">@msg.Sender.Email</span>
                         @if (!m.IsRead)
                         {
                             <span class="unread-dot"></span>
                         }
                     </div>
                     <div class="mi-main">
-                        <span class="subject">@m.Subject</span>
+                        <span class="subject">@msg.Subject</span>
                         <span class="snippet">@snippet</span>
                     </div>
                     @* <div class="mi-meta">
@@ -143,7 +145,7 @@
                             <i class="bi bi-paperclip attach-ic" title="@m.AttachmentCount ek"></i>
                         }
                     </div> *@
-                    <span class="time" title="@(m.SendDate.ToString("d MMMM yyyy, dddd HH:mm", Tr))">@ShortTime(m.SendDate)</span>
+                    <span class="time" title="@(sentDate.ToString("d MMMM yyyy, dddd HH:mm", Tr))">@ShortTime(sentDate)</span>
                 </article>
             }
 
@@ -294,7 +296,7 @@
         all.indeterminate = onPage > 0 && onPage < ids.length;
         $('#selInfo').textContent = n ? `${n} mesaj seçildi` : 'Tümünü seç';
         ['#bulkRead', '#bulkUnread', '#bulkDelete'].forEach(s => { $(s).disabled = !n; });
-        }
+                }
         const c = {
             all: all.length,
             unread: all.filter(r => isOn(r, 'unread')).length,
@@ -309,7 +311,7 @@
             html += `<button type="button" class="chip active" data-clear-label="1"><i class="bi bi-tag-fill"></i> ${window.Mailora.escapeHtml(state.label)} <i class="bi bi-x"></i></button>`;
         }
         $('#filterChips').innerHTML = html;
-                    }
+                            }
 
         function updateBulkBar() {
             const ids = pageRows().map(rowId);
@@ -494,7 +496,7 @@
 
         /* --- Başlangıç --- */
         setQuery(state.query, 'init');
-                }) ();
+                        }) ();
     </script>
 }
 
