@@ -9,7 +9,7 @@
 <body class="preload"
       data-title="@ViewData["Title"]"
       data-active-menu="@ViewData["ActiveMenu"]"
-      data-inbox-url="@(Url.Action("Index", "Inbox") ?? "/Inbox")">
+      data-inbox-url="@(Url.Action("Inbox", "Message") ?? "/Message/Inbox")">
 
     @await Component.InvokeAsync("_MessageLayoutSidebarComponentPartial")
 
@@ -35,7 +35,7 @@
             (() => {
                 const SIDEBAR_KEY = 'mailora.sidebarCollapsed';
                 const body = document.body;
-                const INBOX_URL = body.dataset.inboxUrl || '/Inbox';
+                const INBOX_URL = body.dataset.inboxUrl || '/Message/Inbox';
 
                 /* --- Yardımcılar --- */
                 const $ = (sel, root = document) => root.querySelector(sel);
@@ -50,7 +50,7 @@
                     if (!stack) return;
                     const el = document.createElement('div');
                     el.className = 'm-toast';
-                    el.innerHTML = `<i class="bi iconlead-ic"></i><span>{text}</span>`;
+                    el.innerHTML = `<i class="bi ${icon} lead-ic"></i><span>${text}</span>`;
                     const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 250); };
                     if (action) {
                         const b = document.createElement('button');
@@ -108,7 +108,7 @@
                         window.Mailora.onLabel(lbl.dataset.label);
                         closeSidebar();
                     } else {
-                        location.href = `INBOXURL?label={encodeURIComponent(lbl.dataset.label)}`;
+                        location.href = `${INBOX_URL}?label=${encodeURIComponent(lbl.dataset.label)}`;
                     }
                 });
 
@@ -123,7 +123,7 @@
                         if (e.key !== 'Enter' || typeof window.Mailora.onSearch === 'function') return;
                         e.preventDefault();
                         const q = globalSearch.value.trim();
-                        location.href = q ? `INBOXURL?q={encodeURIComponent(q)}` : INBOX_URL;
+                        location.href = q ? `${INBOX_URL}?q=${encodeURIComponent(q)}` : INBOX_URL;
                     });
                 }
 

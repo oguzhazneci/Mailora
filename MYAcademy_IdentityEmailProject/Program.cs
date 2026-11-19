@@ -20,7 +20,8 @@ builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
 })
     .AddEntityFrameworkStores<EmailContext>()
     .AddDefaultTokenProviders()
-    .AddErrorDescriber<CustomIdentityValidator>();
+    .AddErrorDescriber<CustomIdentityValidator>()
+    .AddClaimsPrincipalFactory<AppUserClaimsPrincipalFactory>();
 
 // Şifre sıfırlama (ve e-posta değiştirme) bağlantıları 1 saat geçerli.
 // Varsayılan süre 1 gündür.

@@ -6,7 +6,7 @@
 @{
     ViewData["Title"] = "Gelen Kutusu";
     ViewData["ActiveMenu"] = "inbox";          // Sidebar'daki data-page="inbox" / data-menu="inbox" linkini aktif yapar
-    Layout = "~/Views/MessageLayout/Index.cshtml";
+    Layout = "_MessageLayout";
 
     // KÖPRÜ (5.6): Model artık kullanıcının posta kutusu kopyaları (MailboxItem).
     // Sıralama controller'da yapılıyor; 7. aşamada bu sayfa baştan yazılacak.
@@ -263,7 +263,7 @@
                 sub.textContent = `${total} mesaj${sub.dataset.email ? ' · ' + sub.dataset.email : ''}`;
                 $('#unreadPill').textContent = `${unread} okunmamış`;
                 setBadge('badgeInbox', unread);
-                setBadge('badgeStarred', starred);
+                // setBadge('badgeStarred', starred);   // 6.4: sunucudaki sayacı eziyordu (Kavram 4). 7. aşamada ele alınacak.
 
                 // 6 hidden lines
 

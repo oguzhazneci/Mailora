@@ -5,7 +5,7 @@
 @{
     ViewData["Title"] = "Yeni Mesaj";
     ViewData["ActiveMenu"] = "compose";        // Sidebar'daki data-page="compose" / data-menu="compose" linkini aktif yapar
-    Layout = "~/Views/MessageLayout/Index.cshtml";
+    Layout = "_MessageLayout";
 
     // Controller'da: ViewBag.Categories = List<SelectListItem>
     var categories = ViewBag.Categories as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>();
