@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 
-namespace MYAcademy_IdentityEmailProject.Models
+namespace MYAcademy_IdentityEmailProject.Identity
 {
     public class CustomIdentityValidator : IdentityErrorDescriber
     {

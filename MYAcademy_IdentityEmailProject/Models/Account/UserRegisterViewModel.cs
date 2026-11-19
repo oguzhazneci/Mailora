@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace MYAcademy_IdentityEmailProject.Models
+namespace MYAcademy_IdentityEmailProject.Models.Account
 {
     public class UserRegisterViewModel
     {

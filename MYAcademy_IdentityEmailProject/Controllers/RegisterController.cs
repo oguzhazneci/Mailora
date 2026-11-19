@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using MYAcademy_IdentityEmailProject.Entities;
-using MYAcademy_IdentityEmailProject.Models;
 using MYAcademy_IdentityEmailProject.Services;
+using MYAcademy_IdentityEmailProject.Models.Account;
 
 namespace MYAcademy_IdentityEmailProject.Controllers
 {

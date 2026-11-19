@@ -1,6 +1,7 @@
 ﻿using MYAcademy_IdentityEmailProject.Entities;
+using MYAcademy_IdentityEmailProject.Models.Messages;
 
-namespace MYAcademy_IdentityEmailProject.Models
+namespace MYAcademy_IdentityEmailProject.Models.Layout
 {
     public class SidebarViewModel
     {

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using MYAcademy_IdentityEmailProject.Entities;
 
-namespace MYAcademy_IdentityEmailProject.Services
+namespace MYAcademy_IdentityEmailProject.Identity
 {
     // Giriş anında çereze konacak claim'leri üretir.
     // Identity'nin standart claim'lerine ad ve soyadı ekler.

@@ -1,4 +1,4 @@
-﻿namespace MYAcademy_IdentityEmailProject.Models
+﻿namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
     // 0 = parametre verilmediğinde varsayılan davranış (bilinçli).
     public enum InboxFilter { All, Unread, Starred }

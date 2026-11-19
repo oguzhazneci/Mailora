@@ -2,6 +2,7 @@
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
 using MYAcademy_IdentityEmailProject.Models;
+using MYAcademy_IdentityEmailProject.Models.Messages;
 
 namespace MYAcademy_IdentityEmailProject.Services
 {

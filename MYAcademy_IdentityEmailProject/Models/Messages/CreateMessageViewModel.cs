@@ -1,4 +1,4 @@
-﻿namespace MYAcademy_IdentityEmailProject.Models
+﻿namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
     // KÖPRÜ (5.6): Form artık entity'ye değil bu modele bağlanıyor (overposting'e karşı).
     // Doğrulama kuralları ve SenderId ataması 8. aşamada eklenecek.

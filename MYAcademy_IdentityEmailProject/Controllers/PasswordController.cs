@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using MYAcademy_IdentityEmailProject.Entities;
-using MYAcademy_IdentityEmailProject.Models;
+using MYAcademy_IdentityEmailProject.Models.Account;
 using MYAcademy_IdentityEmailProject.Services;
 
 namespace MYAcademy_IdentityEmailProject.Controllers

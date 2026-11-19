@@ -1,6 +1,6 @@
 ﻿using MYAcademy_IdentityEmailProject.Entities;
 
-namespace MYAcademy_IdentityEmailProject.Models
+namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
     public class MessageDetailViewModel
     {

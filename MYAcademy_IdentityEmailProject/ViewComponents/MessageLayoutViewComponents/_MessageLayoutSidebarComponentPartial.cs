@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
 using MYAcademy_IdentityEmailProject.Models;
+using MYAcademy_IdentityEmailProject.Models.Layout;
 using MYAcademy_IdentityEmailProject.Services;
 
 namespace MYAcademy_IdentityEmailProject.ViewComponents.MessageLayoutViewComponents

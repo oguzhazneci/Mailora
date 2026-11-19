@@ -1,4 +1,4 @@
-﻿namespace MYAcademy_IdentityEmailProject.Models
+﻿namespace MYAcademy_IdentityEmailProject.Models.Layout
 {
     public class NavbarUserViewModel
     {

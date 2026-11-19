@@ -1,4 +1,4 @@
-﻿namespace MYAcademy_IdentityEmailProject.Models
+﻿namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
     // Sidebar sayaçları. Hem View Component hem JSON yanıtları bu tipi kullanır.
     public class MailboxCounts
