@@ -1,3 +1,4 @@
+using Ganss.Xss;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Authorization;
@@ -43,6 +44,11 @@ builder.Services.AddControllersWithViews(options =>
 builder.Services.AddDbContext<EmailContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IMailService, MailService>();
+builder.Services.AddScoped<IMailboxCounter, MailboxCounter>();
+
+// HTML temizleyici: izin listesindeki etiketleri bırakır, script ve olay özelliklerini siler.
+// Singleton: yapılandırması değiştirilmediği sürece bir örneğin paylaşılması güvenli.
+builder.Services.AddSingleton<IHtmlSanitizer>(_ => new HtmlSanitizer());
 
 builder.Services.ConfigureApplicationCookie(options =>
 {

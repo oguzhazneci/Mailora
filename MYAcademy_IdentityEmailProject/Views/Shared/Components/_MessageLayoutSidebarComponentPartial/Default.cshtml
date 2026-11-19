@@ -16,11 +16,11 @@
     <div class="nav-section-title">Menü</div>
     <ul class="side-nav">
         <li><a class="side-link" data-page="dashboard" asp-controller="Dashboard" asp-action="Index" data-tip="Dashboard"><i class="bi bi-grid-1x2"></i> <span class="lbl">Dashboard</span></a></li>
-        <li><a class="side-link" data-page="inbox" asp-controller="Message" asp-action="Inbox" data-tip="Gelen Kutusu"><i class="bi bi-inbox"></i> <span class="lbl">Gelen Kutusu</span> <span class="side-badge" id="badgeInbox">@(Model.UnreadInbox > 0 ? Model.UnreadInbox.ToString() : "")</span></a></li>
+        <li><a class="side-link" data-page="inbox" asp-controller="Message" asp-action="Inbox" data-tip="Gelen Kutusu"><i class="bi bi-inbox"></i> <span class="lbl">Gelen Kutusu</span> <span class="side-badge" id="badgeInbox">@(Model.Counts.UnreadInbox > 0 ? Model.Counts.UnreadInbox.ToString() : "")</span></a></li>
         <li><a class="side-link" data-page="sent" asp-controller="Message" asp-action="Sendbox" data-tip="Gönderilenler"><i class="bi bi-send"></i> <span class="lbl">Gönderilenler</span></a></li>
-        <li><a class="side-link" data-page="drafts" asp-controller="Message" asp-action="Drafts" data-tip="Taslaklar"><i class="bi bi-file-earmark-text"></i> <span class="lbl">Taslaklar</span> <span class="side-badge muted" id="badgeDrafts">@(Model.Drafts > 0 ? Model.Drafts.ToString() : "")</span></a></li>
-        <li><a class="side-link" data-page="starred" asp-controller="Message" asp-action="Starred" data-tip="Yıldızlı Mesajlar"><i class="bi bi-star"></i> <span class="lbl">Yıldızlı Mesajlar</span> <span class="side-badge muted" id="badgeStarred">@(Model.Starred > 0 ? Model.Starred.ToString() : "")</span></a></li>
-        <li><a class="side-link" data-page="trash" asp-controller="Message" asp-action="Trash" data-tip="Çöp Kutusu"><i class="bi bi-trash3"></i> <span class="lbl">Çöp Kutusu</span> <span class="side-badge muted" id="badgeTrash">@(Model.Trash > 0 ? Model.Trash.ToString() : "")</span></a></li>
+        <li><a class="side-link" data-page="drafts" asp-controller="Message" asp-action="Drafts" data-tip="Taslaklar"><i class="bi bi-file-earmark-text"></i> <span class="lbl">Taslaklar</span> <span class="side-badge muted" id="badgeDrafts">@(Model.Counts.Drafts > 0 ? Model.Counts.Drafts.ToString() : "")</span></a></li>
+        <li><a class="side-link" data-page="starred" asp-controller="Message" asp-action="Starred" data-tip="Yıldızlı Mesajlar"><i class="bi bi-star"></i> <span class="lbl">Yıldızlı Mesajlar</span> <span class="side-badge muted" id="badgeStarred">@(Model.Counts.Starred > 0 ? Model.Counts.Starred.ToString() : "")</span></a></li>
+        <li><a class="side-link" data-page="trash" asp-controller="Message" asp-action="Trash" data-tip="Çöp Kutusu"><i class="bi bi-trash3"></i> <span class="lbl">Çöp Kutusu</span> <span class="side-badge muted" id="badgeTrash">@(Model.Counts.Trash > 0 ? Model.Counts.Trash.ToString() : "")</span></a></li>
     </ul>
 
     <div class="nav-section-title">Hesap</div>
@@ -34,7 +34,7 @@
         @foreach (var category in Model.Categories)
         {
             <li>
-                <a data-label="@category.CategoryName" data-tip="@category.CategoryName">
+                <a asp-controller="Message" asp-action="Inbox" asp-route-categoryId="@category.CategoryId" data-tip="@category.CategoryName">
                     <span class="dot" style="background:@category.ColorCode"></span>
                     <span class="lbl">@category.CategoryName</span>
                 </a>

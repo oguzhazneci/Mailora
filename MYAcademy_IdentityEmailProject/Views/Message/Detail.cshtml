@@ -1,0 +1,109 @@
+﻿@model MessageDetailViewModel
+@using System.Globalization
+@using MYAcademy_IdentityEmailProject.Entities
+@{
+    var msg = Model.Message;
+    var tr = new CultureInfo("tr-TR");
+
+    ViewData["Title"] = string.IsNullOrWhiteSpace(msg.Subject) ? "(Konu yok)" : msg.Subject;
+    ViewData["ActiveMenu"] = Model.Item.Folder == MailFolder.Sent ? "sent" : "inbox";
+    Layout = "_MessageLayout";
+
+    var sender = msg.Sender;
+    var senderName = $"{sender.Name} {sender.Surname}".Trim();
+    if (senderName.Length == 0) senderName = sender.Email ?? "Bilinmeyen gönderen";
+    var initials = string.Concat(senderName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                                           .Take(2).Select(p => p[0])).ToUpper(tr);
+
+    var sentDate = msg.SentDate ?? msg.UpdatedDate;
+    var toList = string.Join(", ", msg.Recipients.Select(r => r.Email));
+
+    string folderName = Model.Item.DeletedDate != null ? "Çöp Kutusu" : Model.Item.Folder switch
+    {
+        MailFolder.Inbox => "Gelen Kutusu",
+        MailFolder.Sent => "Gönderilenler",
+        _ => "Taslaklar"
+    };
+    string backAction = Model.Item.Folder == MailFolder.Sent ? "Sendbox" : "Inbox";
+}
+
+<div class="msg-page">
+    <div class="mp-top">
+        <a class="btn-soft mp-back" asp-controller="Message" asp-action="@backAction"><i class="bi bi-arrow-left"></i> Geri</a>
+        @if (Model.Item.Folder == MailFolder.Inbox && Model.Item.DeletedDate == null)
+        {
+            <button type="button" class="btn-soft" id="markUnread"
+                    data-id="@Model.Item.MailboxItemId"
+                    data-url="@Url.Action("SetRead", "Message")"
+                    data-back="@Url.Action("Inbox", "Message")">
+                <i class="bi bi-envelope"></i> Okunmadı olarak işaretle
+            </button>
+        }
+    </div>
+
+    <div class="mp-grid">
+        <article class="mp-card">
+            <div class="pv-subject-row">
+                <h1 class="pv-subject">@ViewData["Title"]</h1>
+                @* Yıldız: benim kopyam üzerinde. Tıklama 7.6'da bağlanacak. *@
+                <button class="star-btn @(Model.Item.IsStarred ? "on" : "")" type="button" data-star data-id="@Model.Item.MailboxItemId"
+                        aria-label="@(Model.Item.IsStarred ? "Yıldızı kaldır" : "Yıldızla")">
+                    <i class="bi @(Model.Item.IsStarred ? "bi-star-fill" : "bi-star")"></i>
+                </button>
+            </div>
+
+            <div class="pv-sender">
+                <span class="avatar av-lav">@initials</span>
+                <div class="who">
+                    <div class="nm">@senderName</div>
+                    <div class="em">@sender.Email</div>
+                    <div class="to">Kime: <b>@toList</b></div>
+                </div>
+                <div class="dt">
+                    <b>@(sentDate.ToString("d MMMM yyyy", tr))</b>
+                    @(sentDate.ToString("dddd HH:mm", tr))
+                </div>
+            </div>
+
+            @* Temizlenmiş HTML: biçimlendirme kalır, script ve olay özellikleri silinmiştir (Kavram 5). *@
+            <div class="pv-body">@Html.Raw(Model.SafeBodyHtml)</div>
+        </article>
+
+        <aside class="mp-side">
+            <div class="mp-side-card">
+                <h6>Mesaj Bilgileri</h6>
+                <ul class="mp-facts" style="margin-top:0;padding-top:0;border-top:0">
+                    <li>
+                        <span class="k"><i class="bi bi-tag"></i> Kategori</span>
+                        <span class="v">@(msg.Category?.CategoryName ?? "—")</span>
+                    </li>
+                    <li>
+                        <span class="k"><i class="bi bi-folder2"></i> Klasör</span>
+                        <span class="v">@folderName</span>
+                    </li>
+                    <li>
+                        <span class="k"><i class="bi bi-people"></i> Alıcı sayısı</span>
+                        <span class="v">@msg.Recipients.Count</span>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+    </div>
+</div>
+@section Scripts {
+    <script>
+        // Okunmadı işaretle → Gelen Kutusu'na dön.
+        // Sayfada kalsaydık, bir sonraki yenilemede detay sayfası mesajı tekrar "okundu" yapardı (7.5).
+        document.getElementById('markUnread')?.addEventListener('click', async e => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            try {
+                await Mailora.post(btn.dataset.url, { id: btn.dataset.id, isRead: false });
+                location.href = btn.dataset.back;
+            } catch (err) {
+                btn.disabled = false;
+                if (err.message !== '401') Mailora.showToast('İşlem kaydedilemedi.', 'bi-exclamation-circle');
+            }
+        });
+    </script>
+}

@@ -9,7 +9,8 @@
 <body class="preload"
       data-title="@ViewData["Title"]"
       data-active-menu="@ViewData["ActiveMenu"]"
-      data-inbox-url="@(Url.Action("Inbox", "Message") ?? "/Message/Inbox")">
+      data-inbox-url="@(Url.Action("Inbox", "Message") ?? "/Message/Inbox")"
+      data-star-url="@Url.Action("SetStar", "Message")">
 
     @await Component.InvokeAsync("_MessageLayoutSidebarComponentPartial")
 
@@ -23,6 +24,9 @@
     </main>
 
     <div class="toast-stack" id="toastStack"></div>
+
+    @* fetch istekleri için antiforgery token (7.6). JavaScript buradan okuyup başlıkta gönderir. *@
+    @Html.AntiForgeryToken()
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -69,6 +73,75 @@
                     if (el) el.textContent = n ? n : '';
                 }
 
+                /* --- Sunucuya POST (fetch) — 7.6 ---
+                   Antiforgery token sayfadaki gizli alandan okunur ve başlıkta gönderilir.
+                   Oturum sona ermişse sunucu 401 döner (Aşama 3.5): sayfa yenilenir, 401 kartı açılır. */
+                async function post(url, data = {}) {
+                    const token = $('input[name="__RequestVerificationToken"]')?.value ?? '';
+
+                    // Dizi değerler aynı anahtarla tekrarlanır: { ids: [4, 7] } → ids=4&ids=7 → int[] ids (7.7)
+                    const form = new URLSearchParams();
+                    Object.entries(data).forEach(([key, value]) =>
+                        [].concat(value).forEach(v => form.append(key, v)));
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'RequestVerificationToken': token },
+                        body: form
+                    });
+                    if (response.status === 401) {
+                        showToast('Oturumunuz sona erdi. Yönlendiriliyorsunuz…', 'bi-box-arrow-in-right');
+                        setTimeout(() => location.reload(), 1500);
+                        throw new Error('401');
+                    }
+                    if (!response.ok) throw new Error(String(response.status));
+
+                    // Sunucu güncel sayaçları gönderdiyse sidebar'ı güncelle (7.8) ve
+                    // sayfalara "bir şey değişti" olayını yayınla. Layout sayfaları tanımaz; sayfalar dinler.
+                    const result = await response.json();
+                    if (result && result.counts) applyCounts(result.counts);
+                    document.dispatchEvent(new CustomEvent('mailora:changed', { detail: result }));
+                    return result;
+                }
+
+                /* --- Sidebar sayaçları: tek doğruluk kaynağı sunucu (7.8) --- */
+                function applyCounts(counts) {
+                    setBadge('badgeInbox', counts.unreadInbox);
+                    setBadge('badgeDrafts', counts.drafts);
+                    setBadge('badgeStarred', counts.starred);
+                    setBadge('badgeTrash', counts.trash);
+                }
+
+                /* --- Yıldızlama (tüm sayfalar): <button data-star data-id="MailboxItemId"> — 7.6 ---
+                   Olay yetkilendirmesi: tek dinleyici, sayfadaki bütün yıldız butonlarını yönetir.
+                   İyimser güncelleme: arayüz hemen değişir, sunucu reddederse geri alınır. */
+                const STAR_URL = body.dataset.starUrl;
+
+                function paintStar(btn, on) {
+                    btn.classList.toggle('on', on);
+                    btn.querySelector('i').className = on ? 'bi bi-star-fill' : 'bi bi-star';
+                    btn.setAttribute('aria-label', on ? 'Yıldızı kaldır' : 'Yıldızla');
+                }
+
+                document.addEventListener('click', async e => {
+                    const btn = e.target.closest('[data-star]');
+                    if (!btn || !STAR_URL) return;
+                    e.preventDefault();
+
+                    const next = !btn.classList.contains('on');
+                    paintStar(btn, next);                                     // 1) hemen göster
+                    btn.classList.add('pop');
+                    setTimeout(() => btn.classList.remove('pop'), 350);
+
+                    try {
+                        await post(STAR_URL, { id: btn.dataset.id, isStarred: next });   // 2) sunucuya bildir
+                        showToast(next ? 'Mesaj yıldızlandı.' : 'Yıldız kaldırıldı.', next ? 'bi-star-fill' : 'bi-star');
+                    } catch (err) {
+                        paintStar(btn, !next);                                // 3) başarısızsa geri al
+                        if (err.message !== '401') showToast('İşlem kaydedilemedi.', 'bi-exclamation-circle');
+                    }
+                });
+
                 /* --- Sayfa başlığı & aktif menü (ViewData["Title"], ViewData["ActiveMenu"]) --- */
                 if (body.dataset.title) document.title = `${body.dataset.title} · Mailora`;
                 const activeMenu = body.dataset.activeMenu;
@@ -98,20 +171,6 @@
                 $('#sidebarBackdrop')?.addEventListener('click', closeSidebar);
                 window.addEventListener('resize', () => { if (window.innerWidth >= 992) closeSidebar(); });
 
-                /* --- Sidebar etiketleri (data-label="İş") ---
-                   Gelen Kutusu açıksa listeyi filtreler, değilse Gelen Kutusu'na yönlendirir. */
-                document.addEventListener('click', e => {
-                    const lbl = e.target.closest('[data-label]');
-                    if (!lbl) return;
-                    e.preventDefault();
-                    if (typeof window.Mailora.onLabel === 'function') {
-                        window.Mailora.onLabel(lbl.dataset.label);
-                        closeSidebar();
-                    } else {
-                        location.href = `${INBOX_URL}?label=${encodeURIComponent(lbl.dataset.label)}`;
-                    }
-                });
-
                 /* --- Global arama (Navbar) ---
                    Gelen Kutusu açıksa anlık filtreler, değilse Enter ile Gelen Kutusu'nda arar. */
                 const globalSearch = $('#globalSearch');
@@ -135,7 +194,7 @@
 
                 /* --- Sayfaların kullanacağı ortak API --- */
                 window.Mailora = {
-                    $, $$, escapeHtml, showToast, setBadge, openSidebar, closeSidebar,
+                    $, $$, escapeHtml, showToast, setBadge, openSidebar, closeSidebar, post, applyCounts,
                     inboxUrl: INBOX_URL,
                     onSearch: null,   // sayfa arama yapabiliyorsa kendi fonksiyonunu atar
                     onLabel: null     // sayfa etiket filtresi destekliyorsa kendi fonksiyonunu atar

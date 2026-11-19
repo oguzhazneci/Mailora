@@ -4,10 +4,7 @@ namespace MYAcademy_IdentityEmailProject.Models
 {
     public class SidebarViewModel
     {
-        public int UnreadInbox { get; set; }
-        public int Drafts { get; set; }
-        public int Starred { get; set; }
-        public int Trash { get; set; }
+        public MailboxCounts Counts { get; set; } = new();
         public List<Category> Categories { get; set; } = new();
     }
 }
