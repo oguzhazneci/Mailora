@@ -10,7 +10,9 @@
       data-title="@ViewData["Title"]"
       data-active-menu="@ViewData["ActiveMenu"]"
       data-inbox-url="@(Url.Action("Inbox", "Message") ?? "/Message/Inbox")"
-      data-star-url="@Url.Action("SetStar", "Message")">
+      data-star-url="@Url.Action("SetStar", "Message")"
+      data-toast="@TempData["Toast"]"
+      data-toast-icon="@TempData["ToastIcon"]">
 
     @await Component.InvokeAsync("_MessageLayoutSidebarComponentPartial")
 
@@ -199,6 +201,9 @@
                     onSearch: null,   // sayfa arama yapabiliyorsa kendi fonksiyonunu atar
                     onLabel: null     // sayfa etiket filtresi destekliyorsa kendi fonksiyonunu atar
                 };
+
+                // TempData'dan gelen bildirim (8.3): herhangi bir action TempData["Toast"] ile toast gösterebilir.
+                if (body.dataset.toast) showToast(escapeHtml(body.dataset.toast), body.dataset.toastIcon || 'bi-check2-circle');
 
                 /* --- Başlangıç --- */
                 setSidebarCollapsed(readJSON(SIDEBAR_KEY) === true, false);

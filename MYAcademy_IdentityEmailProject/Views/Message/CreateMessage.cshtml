@@ -7,7 +7,7 @@
     ViewData["ActiveMenu"] = "compose";        // Sidebar'daki data-page="compose" / data-menu="compose" linkini aktif yapar
     Layout = "_MessageLayout";
 
-    // Controller'da: ViewBag.Categories = List<SelectListItem>
+    // Controller'da: LoadCategoriesAsync() → ViewBag.Categories = SelectList
     var categories = ViewBag.Categories as IEnumerable<SelectListItem> ?? Enumerable.Empty<SelectListItem>();
 
     var userName = User.FindFirstValue(ClaimTypes.GivenName) ?? User.Identity?.Name ?? "";
@@ -86,8 +86,9 @@
         </div>
     </div>
 
-    @* Controller adınız farklıysa asp-controller ekleyin: asp-controller="Message" *@
-    <form class="cmp-card" id="cmpForm" asp-action="Create" method="post" novalidate autocomplete="off">
+    @* novalidate: tarayıcının kendi balonları yerine aşağıdaki JS doğrulaması çalışır.
+       Gerçek kontrol her zaman sunucuda (8.2); buradaki kontroller kullanıcıya hız kazandırır. *@
+    <form class="cmp-card" id="cmpForm" asp-controller="Message" asp-action="CreateMessage" method="post" novalidate autocomplete="off">
 
         <!-- Alıcı, kategori & konu -->
         <div class="cmp-fields">
@@ -103,14 +104,14 @@
             </div>
 
             <div class="cmp-row @ErrClass(nameof(Model.ReceiverEmail))" id="rowTo">
-                <label class="cmp-label" asp-for="ReceiverEmail">Kime</label>
+                <label class="cmp-label" for="cmpTo">Kime</label>
                 <input asp-for="ReceiverEmail" id="cmpTo" class="cmp-subject" type="email"
                        placeholder="ornek@alanadi.com" maxlength="256" spellcheck="false" autocomplete="email">
                 <div class="cmp-err">@ErrText(nameof(Model.ReceiverEmail))</div>
             </div>
 
             <div class="cmp-row @ErrClass(nameof(Model.CategoryId))" id="rowCategory">
-                <label class="cmp-label" asp-for="CategoryId">Kategori</label>
+                <label class="cmp-label" for="cmpCategory">Kategori</label>
                 <div class="cmp-select-wrap" id="cmpCategoryWrap">
                     <span class="cmp-select-dot"></span>
                     <select asp-for="CategoryId" asp-items="categories" id="cmpCategory" class="cmp-select" required>
@@ -122,7 +123,7 @@
             </div>
 
             <div class="cmp-row @ErrClass(nameof(Model.Subject))" id="rowSubject">
-                <label class="cmp-label" asp-for="Subject">Konu</label>
+                <label class="cmp-label" for="cmpSubject">Konu</label>
                 <input asp-for="Subject" id="cmpSubject" class="cmp-subject" type="text"
                        placeholder="Mesajınızın konusunu yazın..." maxlength="200">
                 <div class="cmp-err">@ErrText(nameof(Model.Subject))</div>
@@ -184,7 +185,7 @@
             </div>
         </div>
 
-        <!-- Editör (HTML içerik gizli Content alanına yazılır) -->
+        <!-- Editör (HTML içerik gizli Body alanına yazılır; sunucu temizler, 8.2) -->
         <div class="cmp-editor-wrap @ErrClass(nameof(Model.Body))" id="rowBody">
             <div class="cmp-editor" id="cmpEditor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Mesaj içeriği"
                  data-placeholder="Merhaba, mesajınızı buraya yazmaya başlayın…">
@@ -221,13 +222,27 @@
 @section Scripts {
     <script>
         /* ======================================================================
-           YENİ MESAJ — form normal POST ile gönderilir (asp-action="Create").
+           YENİ MESAJ — form normal POST ile gönderilir (Message/CreateMessage).
            JS: zengin metin editörü, istemci doğrulaması, Ctrl+Enter, temizle onayı.
+           İstemci kuralları CreateMessageViewModel ile aynıdır (8.5); sunucu yine de her şeyi tekrar kontrol eder.
            ====================================================================== */
         (() => {
             const { $, $$, showToast } = window.Mailora;
 
             const EMAIL_RE = /^[^\s@@<>()[\],;:"]+@@[^\s@@<>()[\],;:"]+\.[a-z]{2,}$/i;
+
+            // Sunucudaki kurallar ve mesajlar (CreateMessageViewModel) — iki tarafta aynı metin
+            const RULES = { emailMax: 256, subjectMax: 200, bodyMax: 100000 };
+            const MSG = {
+                toRequired: 'Alıcı adresi zorunludur.',
+                toInvalid: 'Geçerli bir e-posta adresi girin.',
+                toTooLong: 'E-posta adresi en fazla 256 karakter olabilir.',
+                category: 'Bir kategori seçin.',
+                subjectRequired: 'Konu zorunludur.',
+                subjectTooLong: 'Konu en fazla 200 karakter olabilir.',
+                bodyRequired: 'Mesaj içeriği boş olamaz.',
+                bodyTooLong: 'Mesaj içeriği çok uzun.'
+            };
             const STATE_CMDS = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList', 'insertOrderedList', 'justifyLeft', 'justifyCenter', 'justifyRight'];
             const BLOCK_LABELS = { p: 'Paragraf', div: 'Paragraf', h1: 'Başlık 1', h2: 'Başlık 2', h3: 'Başlık 3', blockquote: 'Alıntı' };
 
@@ -269,9 +284,9 @@
             }
 
             function updateCounter() {
-                const text = editor.innerText.replace(/ /g, ' ').trim();
+                const text = editor.innerText.replace(/\u00a0/g, ' ').trim();   // &nbsp; → normal boşluk
                 const words = text ? text.split(/\s+/).length : 0;
-                ('#cmpCounter').textContent = `{words.toLocaleString('tr-TR')} kelime · ${text.length.toLocaleString('tr-TR')} karakter`;
+                $('#cmpCounter').textContent = `${words.toLocaleString('tr-TR')} kelime · ${text.length.toLocaleString('tr-TR')} karakter`;
             }
 
             editor.addEventListener('input', () => { syncContent(); updateCounter(); clearFieldError($('#rowBody')); markDirty(); });
@@ -308,7 +323,7 @@
                 editor.focus(); restoreSelection();
                 const sel = window.getSelection();
                 if (!sel.rangeCount || sel.isCollapsed || !editor.contains(sel.anchorNode)) {
-                    document.execCommand('insertHTML', false, `<a href="escapeHtml(url)">{escapeHtml(raw)}</a>&nbsp;`);
+                    document.execCommand('insertHTML', false, `<a href="${escapeHtml(url)}">${escapeHtml(raw)}</a>&nbsp;`);
                 } else {
                     document.execCommand('createLink', false, url);
                 }
@@ -324,7 +339,7 @@
                 STATE_CMDS.forEach(c => {
                     let on = false;
                     if (inEditor) { try { on = document.queryCommandState(c); } catch (e) { on = false; } }
-                    (`[data-cmd="{c}"]`, tb)?.classList.toggle('active', on);
+                    $(`[data-cmd="${c}"]`, tb)?.classList.toggle('active', on);
                 });
                 let block = '';
                 if (inEditor) { try { block = String(document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, ''); } catch (e) { block = ''; } }
@@ -332,7 +347,7 @@
             }
 
             function togglePop(name, btn) {
-                const pop = (`[data-pop-for="{name}"]`);
+                const pop = $(`[data-pop-for="${name}"]`);
                 const willOpen = !pop.classList.contains('show');
                 closePops();
                 if (!willOpen) return;
@@ -370,7 +385,7 @@
             to.addEventListener('blur', () => {
                 const v = to.value.trim();
                 to.value = v;
-                if (v && !EMAIL_RE.test(v)) setFieldError($('#rowTo'), 'Geçerli bir e-posta adresi girin (ör. ad@@alanadi.com).');
+                if (v && !EMAIL_RE.test(v)) setFieldError($('#rowTo'), MSG.toInvalid);
             });
             to.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); category.focus(); } });
 
@@ -386,11 +401,20 @@
                 const fail = (row, msg, el) => { setFieldError(row, msg); if (!first) first = el; };
                 const email = to.value.trim();
 
-                if (!email) fail($('#rowTo'), 'Alıcı e-posta adresini girin.', to);
-                else if (!EMAIL_RE.test(email)) fail($('#rowTo'), 'Geçerli bir e-posta adresi girin (ör. ad@@alanadi.com).', to);
-                if (!category.value) fail($('#rowCategory'), 'Lütfen bir kategori seçin.', category);
-                if (!subject.value.trim()) fail($('#rowSubject'), 'Konu alanı boş bırakılamaz.', subject);
-                if (!textOf(editor.innerHTML)) fail($('#rowBody'), 'Mesaj içeriği boş olamaz.', editor);
+                const subj = subject.value.trim();
+
+                if (!email) fail($('#rowTo'), MSG.toRequired, to);
+                else if (email.length > RULES.emailMax) fail($('#rowTo'), MSG.toTooLong, to);
+                else if (!EMAIL_RE.test(email)) fail($('#rowTo'), MSG.toInvalid, to);
+
+                if (!category.value) fail($('#rowCategory'), MSG.category, category);
+
+                if (!subj) fail($('#rowSubject'), MSG.subjectRequired, subject);
+                else if (subj.length > RULES.subjectMax) fail($('#rowSubject'), MSG.subjectTooLong, subject);
+
+                // Sunucu: [Required] + HasVisibleText (görünür metin) ve StringLength(100_000) HTML'in tamamına
+                if (!textOf(editor.innerHTML)) fail($('#rowBody'), MSG.bodyRequired, editor);
+                else if (content.value.length > RULES.bodyMax) fail($('#rowBody'), MSG.bodyTooLong, editor);
 
                 if (first) { first.focus(); return false; }
                 return true;
@@ -408,7 +432,7 @@
                 btn.disabled = true;
                 $('.lbl', btn).innerHTML = '<span class="spin"></span> Gönderiliyor…';
                 updateStatus();
-                // Form normal şekilde POST edilir → Controller'daki Create(CreateMessageViewModel model)
+                // Form normal şekilde POST edilir → MessageController.CreateMessage(CreateMessageViewModel model)
             });
 
             /* --- Temizle (onaylı) --- */
@@ -462,6 +486,3 @@
         })();
     </script>
 }
-
-
-
