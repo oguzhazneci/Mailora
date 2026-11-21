@@ -6,7 +6,14 @@
     var tr = new CultureInfo("tr-TR");
 
     ViewData["Title"] = string.IsNullOrWhiteSpace(msg.Subject) ? "(Konu yok)" : msg.Subject;
-    ViewData["ActiveMenu"] = Model.Item.Folder == MailFolder.Sent ? "sent" : "inbox";
+    // Menü ve Geri linki: mesajı hangi listeden açtıysak oraya (çöpteki kopya → Çöp Kutusu) — 9.7
+    bool inTrash = Model.Item.DeletedDate != null;
+    ViewData["ActiveMenu"] = inTrash ? "trash" : Model.Item.Folder switch
+    {
+        MailFolder.Sent => "sent",
+        MailFolder.Draft => "drafts",
+        _ => "inbox"
+    };
     Layout = "_MessageLayout";
 
     var sender = msg.Sender;
@@ -18,14 +25,37 @@
     var sentDate = msg.SentDate ?? msg.UpdatedDate;
     var toList = string.Join(", ", msg.Recipients.Select(r => r.Email));
 
-    string folderName = Model.Item.DeletedDate != null ? "Çöp Kutusu" : Model.Item.Folder switch
+    string folderName = inTrash ? "Çöp Kutusu" : Model.Item.Folder switch
     {
         MailFolder.Inbox => "Gelen Kutusu",
         MailFolder.Sent => "Gönderilenler",
         _ => "Taslaklar"
     };
-    string backAction = Model.Item.Folder == MailFolder.Sent ? "Sendbox" : "Inbox";
+    string backAction = inTrash ? "Trash" : Model.Item.Folder switch
+    {
+        MailFolder.Sent => "Sent",
+        MailFolder.Draft => "Drafts",
+        _ => "Inbox"
+    };
+
+    // Yanıtla / İlet sadece gönderilmiş mesajlarda (çöpteki bir taslak da burada açılabilir)
+    bool canRespond = msg.SentDate != null;
 }
+
+<style>
+    /* Yanıt alıntısı (9.7): solda çizgi, soluk renk — kimin yazdığı bir bakışta anlaşılsın */
+    .pv-body blockquote {
+        margin: 6px 0 14px;
+        padding: 4px 0 4px 14px;
+        border-left: 3px solid var(--border);
+        color: var(--muted);
+    }
+
+        .pv-body blockquote blockquote {
+            border-left-color: #D9D4F5;
+        }
+    /* yanıtın yanıtı */
+</style>
 
 <div class="msg-page">
     <div class="mp-top">
@@ -45,11 +75,14 @@
         <article class="mp-card">
             <div class="pv-subject-row">
                 <h1 class="pv-subject">@ViewData["Title"]</h1>
-                @* Yıldız: benim kopyam üzerinde. Tıklama 7.6'da bağlanacak. *@
-                <button class="star-btn @(Model.Item.IsStarred ? "on" : "")" type="button" data-star data-id="@Model.Item.MailboxItemId"
-                        aria-label="@(Model.Item.IsStarred ? "Yıldızı kaldır" : "Yıldızla")">
-                    <i class="bi @(Model.Item.IsStarred ? "bi-star-fill" : "bi-star")"></i>
-                </button>
+                @* Yıldız: benim kopyam üzerinde (layout'taki dinleyici, 7.6). Taslaklarda yok (9.1, karar 2-A). *@
+                @if (Model.Item.Folder != MailFolder.Draft)
+                {
+                    <button class="star-btn @(Model.Item.IsStarred ? "on" : "")" type="button" data-star data-id="@Model.Item.MailboxItemId"
+                            aria-label="@(Model.Item.IsStarred ? "Yıldızı kaldır" : "Yıldızla")">
+                        <i class="bi @(Model.Item.IsStarred ? "bi-star-fill" : "bi-star")"></i>
+                    </button>
+                }
             </div>
 
             <div class="pv-sender">
@@ -67,6 +100,19 @@
 
             @* Temizlenmiş HTML: biçimlendirme kalır, script ve olay özellikleri silinmiştir (Kavram 5). *@
             <div class="pv-body">@Html.Raw(Model.SafeBodyHtml)</div>
+
+            @* Yanıtla / İlet = önceden doldurulmuş Yeni Mesaj sayfası (9.7, Kavram 1) *@
+            @if (canRespond)
+            {
+                <div class="pv-actions">
+                    <a class="btn-soft" asp-controller="Message" asp-action="CreateMessage" asp-route-replyTo="@msg.MessageId">
+                        <i class="bi bi-reply"></i> Yanıtla
+                    </a>
+                    <a class="btn-soft" asp-controller="Message" asp-action="CreateMessage" asp-route-forwardOf="@msg.MessageId">
+                        <i class="bi bi-forward"></i> İlet
+                    </a>
+                </div>
+            }
         </article>
 
         <aside class="mp-side">

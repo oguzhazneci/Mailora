@@ -2,10 +2,14 @@
 
 namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
-    // Gönderen alanı BİLEREK yok: göndereni sunucu oturumdan alır (overposting, 5.6).
-    // Uzunluk sınırları veritabanı kolonlarıyla aynı (5.5).
+    // Yeni Mesaj formu. Buradaki kurallar GÖNDERİM içindir (8.2).
+    // Taslak kaydında [Required]/[EmailAddress] devre dışı kalır; sınırlar ValidateDraft'ta (9.6).
     public class CreateMessageViewModel
     {
+        // Düzenlenen taslağın MessageId'si; yeni mesajda null.
+        // İstemciden gelir: controller sahipliği ve hâlâ taslak olduğunu her seferinde kontrol eder.
+        public int? DraftId { get; set; }
+
         [Required(ErrorMessage = "Alıcı adresi zorunludur.")]
         [EmailAddress(ErrorMessage = "Geçerli bir e-posta adresi girin.")]
         [StringLength(256, ErrorMessage = "E-posta adresi en fazla 256 karakter olabilir.")]

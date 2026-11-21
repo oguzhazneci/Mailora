@@ -1,16 +1,17 @@
-﻿@model InboxViewModel
+﻿@model MailboxViewModel
 @using System.Globalization
 @using System.Net
 @using System.Text.RegularExpressions
 @using MYAcademy_IdentityEmailProject.Entities
 @{
-    ViewData["Title"] = "Gelen Kutusu";
-    ViewData["ActiveMenu"] = "inbox";
+    // Başlık, aktif menü ve linklerin action'ı görünüm tanımından gelir (9.2)
+    ViewData["Title"] = Model.Title;
+    ViewData["ActiveMenu"] = Model.ActiveMenu;
     Layout = "_MessageLayout";
 
     var activeCategory = Model.Categories.FirstOrDefault(c => c.CategoryId == Model.Query.CategoryId);
     bool hasSearch = !string.IsNullOrWhiteSpace(Model.Query.Q);
-    bool isFiltered = hasSearch || activeCategory != null || Model.Query.Filter != InboxFilter.All;
+    bool isFiltered = hasSearch || activeCategory != null || Model.Query.Filter != MailboxFilter.All;
 
     int firstRow = Model.TotalItems == 0 ? 0 : (Model.Page - 1) * Model.PageSize + 1;
     int lastRow = Math.Min(Model.Page * Model.PageSize, Model.TotalItems);
@@ -23,6 +24,25 @@
     {
         var fullName = $"{user.Name} {user.Surname}".Trim();
         return fullName.Length > 0 ? fullName : (user.Email ?? "Bilinmeyen gönderen");
+    }
+
+    // Satırda gösterilecek "karşı taraf" (9.3). Yön, görünümden değil satırın KLASÖRÜNDEN gelir:
+    // Gelen kopyada gönderen, Gönderilen/Taslak kopyada alıcı(lar). Yıldızlı ve Çöp Kutusu karışık listelerdir.
+    (string Label, string Name, string? Key) Counterpart(MailboxItem item)
+    {
+        var msg = item.Message;
+        if (item.Folder == MailFolder.Inbox)
+            return ("", DisplayName(msg.Sender), msg.Sender.Email);
+
+        var recipients = msg.Recipients.OrderBy(r => r.RecipientType).ToList();
+        if (recipients.Count == 0)
+            return ("Kime: ", "Alıcı yok", null);
+
+        var first = recipients[0];
+        // Kayıtlı alıcının adı controller'ın tek sorguyla doldurduğu sözlükten; dış alıcıda adres
+        string name = first.UserId != null && Model.UserNames.TryGetValue(first.UserId, out var n) ? n : first.Email;
+        string more = recipients.Count > 1 ? $" +{recipients.Count - 1}" : "";
+        return ("Kime: ", name + more, first.Email);
     }
 
     static string Initials(string name)
@@ -103,6 +123,43 @@
         color: var(--accent);
         font-weight: 600;
     }
+
+    /* Başlığın sağ tarafı: okunmamış rozeti + (Çöp Kutusu'nda) Çöpü Boşalt — 9.5 */
+    .list-title-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .list-title-actions form {
+            margin: 0;
+        }
+
+    .btn-empty-trash {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, #C2476B 25%, white);
+        background: color-mix(in srgb, #C2476B 8%, white);
+        color: #C2476B;
+        font-size: 12.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background .2s;
+    }
+
+        .btn-empty-trash:hover:not(:disabled) {
+            background: color-mix(in srgb, #C2476B 15%, white);
+        }
+
+        .btn-empty-trash:disabled {
+            opacity: .45;
+            cursor: not-allowed;
+        }
 </style>
 
 <section class="inbox" id="inbox">
@@ -112,25 +169,41 @@
         <div class="list-head">
             <div class="list-title">
                 <div>
-                    <h1>Gelen Kutusu</h1>
+                    <h1>@Model.Title</h1>
                     <div class="sub" id="inboxSub" data-suffix="@(hasSearch || activeCategory != null ? " · filtrelenmiş" : "")">@Model.AllCount mesaj@(hasSearch || activeCategory != null ? " · filtrelenmiş" : "")</div>
                 </div>
-                <span class="count-pill" id="unreadPill">@Model.UnreadCount okunmamış</span>
+                @* Sağdaki öğeler tek grupta: başlık satırı "sol blok | sağ grup" olarak iki parçada kalır *@
+                <div class="list-title-actions">
+                    @if (Model.TracksReadState)
+                    {
+                        <span class="count-pill" id="unreadPill">@Model.UnreadCount okunmamış</span>
+                    }
+                    @if (Model.IsTrash)
+                    {
+                        @* Normal form POST → sunucu siler → Redirect → GET (PRG). F5 silmeyi tekrarlamaz. *@
+                        <form method="post" asp-controller="Message" asp-action="EmptyTrash"
+                              onsubmit="return confirm('Çöp kutusundaki TÜM mesajlar kalıcı olarak silinecek. Bu işlem geri alınamaz. Devam edilsin mi?');">
+                            <button type="submit" class="btn-empty-trash" disabled="@(Model.AllCount == 0 && !isFiltered)">
+                                <i class="bi bi-trash3"></i> Çöpü Boşalt
+                            </button>
+                        </form>
+                    }
+                </div>
             </div>
 
-            <form method="get" asp-controller="Message" asp-action="Inbox" class="list-tools">
+            <form method="get" asp-controller="Message" asp-action="@Model.ActionName" class="list-tools">
                 @* Aktif durum filtresi arama yapınca kaybolmasın (7.4, Kavram 2) *@
-                @if (Model.Query.Filter != InboxFilter.All)
+                @if (Model.Query.Filter != MailboxFilter.All)
                 {
                     <input type="hidden" name="filter" value="@Model.Query.Filter" />
                 }
 
                 <div class="list-search @(hasSearch ? "has-value" : "")">
                     <i class="bi bi-search"></i>
-                    <input type="text" name="q" value="@Model.Query.Q" placeholder="Gönderen, konu veya içerik ara" autocomplete="off">
+                    <input type="text" name="q" value="@Model.Query.Q" placeholder="@Model.SearchPlaceholder" autocomplete="off">
                     @if (hasSearch)
                     {
-                        <a class="clear" asp-action="Inbox" asp-all-route-data="Model.RouteWith(clearSearch: true)" aria-label="Aramayı temizle"><i class="bi bi-x-circle-fill"></i></a>
+                        <a class="clear" asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(clearSearch: true)" aria-label="Aramayı temizle"><i class="bi bi-x-circle-fill"></i></a>
                     }
                 </div>
 
@@ -143,20 +216,26 @@
                 </select>
 
                 <select name="sort" class="list-select" data-autosubmit aria-label="Sıralama">
-                    <option value="Newest" selected="@(Model.Query.Sort == InboxSort.Newest)">Yeniden eskiye</option>
-                    <option value="Oldest" selected="@(Model.Query.Sort == InboxSort.Oldest)">Eskiden yeniye</option>
+                    <option value="Newest" selected="@(Model.Query.Sort == MailboxSort.Newest)">Yeniden eskiye</option>
+                    <option value="Oldest" selected="@(Model.Query.Sort == MailboxSort.Oldest)">Eskiden yeniye</option>
                 </select>
 
                 <div class="filter-chips">
-                    <a class="chip @(Model.Query.Filter == InboxFilter.All ? "active" : "")"
-                       asp-action="Inbox" asp-all-route-data="Model.RouteWith(filter: InboxFilter.All)">Tümü <span class="n" id="countAll">@Model.AllCount</span></a>
-                    <a class="chip @(Model.Query.Filter == InboxFilter.Unread ? "active" : "")"
-                       asp-action="Inbox" asp-all-route-data="Model.RouteWith(filter: InboxFilter.Unread)">Okunmamış <span class="n" id="countUnread">@Model.UnreadCount</span></a>
-                    <a class="chip @(Model.Query.Filter == InboxFilter.Starred ? "active" : "")"
-                       asp-action="Inbox" asp-all-route-data="Model.RouteWith(filter: InboxFilter.Starred)">Yıldızlı <span class="n" id="countStarred">@Model.StarredCount</span></a>
+                    <a class="chip @(Model.Query.Filter == MailboxFilter.All ? "active" : "")"
+                       asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(filter: MailboxFilter.All)">Tümü <span class="n" id="countAll">@Model.AllCount</span></a>
+                    @if (Model.TracksReadState)
+                    {
+                        <a class="chip @(Model.Query.Filter == MailboxFilter.Unread ? "active" : "")"
+                           asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(filter: MailboxFilter.Unread)">Okunmamış <span class="n" id="countUnread">@Model.UnreadCount</span></a>
+                    }
+                    @if (Model.ShowsStarFilter)
+                    {
+                        <a class="chip @(Model.Query.Filter == MailboxFilter.Starred ? "active" : "")"
+                           asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(filter: MailboxFilter.Starred)">Yıldızlı <span class="n" id="countStarred">@Model.StarredCount</span></a>
+                    }
                     @if (activeCategory != null)
                     {
-                        <a class="chip active" asp-action="Inbox" asp-all-route-data="Model.RouteWith(clearCategory: true)" title="Kategori filtresini kaldır">
+                        <a class="chip active" asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(clearCategory: true)" title="Kategori filtresini kaldır">
                             <i class="bi bi-tag-fill"></i> @activeCategory.CategoryName <i class="bi bi-x"></i>
                         </a>
                     }
@@ -169,13 +248,26 @@
              data-read-url="@Url.Action("BulkSetRead", "Message")"
              data-trash-url="@Url.Action("BulkMoveToTrash", "Message")"
              data-restore-url="@Url.Action("BulkRestore", "Message")"
-             data-counts-url="@Url.Action("InboxCounts", "Message")">
+             data-forever-url="@Url.Action("BulkDeleteForever", "Message")"
+             data-counts-url="@Url.Action("ListCounts", "Message", new { view = Model.View })">
             <input type="checkbox" class="m-check" id="checkAll" aria-label="Bu sayfadakilerin tümünü seç" disabled="@(!Model.Items.Any())">
             <span class="sel-info" id="selInfo">Tümünü seç</span>
             <span class="spacer"></span>
-            <button type="button" class="tool-btn" data-bulk="read" title="Okundu olarak işaretle" disabled><i class="bi bi-envelope-open"></i></button>
-            <button type="button" class="tool-btn" data-bulk="unread" title="Okunmadı olarak işaretle" disabled><i class="bi bi-envelope"></i></button>
-            <button type="button" class="tool-btn" data-bulk="trash" title="Çöp kutusuna taşı" disabled><i class="bi bi-trash3"></i></button>
+            @if (Model.TracksReadState)
+            {
+                <button type="button" class="tool-btn" data-bulk="read" title="Okundu olarak işaretle" disabled><i class="bi bi-envelope-open"></i></button>
+                <button type="button" class="tool-btn" data-bulk="unread" title="Okunmadı olarak işaretle" disabled><i class="bi bi-envelope"></i></button>
+            }
+            @if (Model.IsTrash)
+            {
+                @* Çöp Kutusu'nda "çöpe taşı" yerine: geri al ve kalıcı sil (9.5) *@
+                <button type="button" class="tool-btn" data-bulk="restore" title="Geri al" disabled><i class="bi bi-arrow-counterclockwise"></i></button>
+                <button type="button" class="tool-btn" data-bulk="forever" title="Kalıcı olarak sil" disabled><i class="bi bi-x-octagon"></i></button>
+            }
+            else
+            {
+                <button type="button" class="tool-btn" data-bulk="trash" title="Çöp kutusuna taşı" disabled><i class="bi bi-trash3"></i></button>
+            }
         </div>
 
         <!-- Mesaj listesi: sadece bu sayfanın satırları sunucudan gelir -->
@@ -183,9 +275,12 @@
             @foreach (var item in Model.Items)
             {
                 var msg = item.Message;                          // içerik (herkes için aynı)
-                var senderName = DisplayName(msg.Sender);
+                var who = Counterpart(item);                     // gönderen ya da alıcı (9.3)
                 var sentDate = msg.SentDate ?? msg.UpdatedDate;
-                var detailUrl = Url.Action("Detail", "Message", new { id = msg.MessageId });
+                // Taslak satırı düzenleme sayfasını açar; çöpteki taslak ise sadece görüntülenir (9.6)
+                var detailUrl = item.Folder == MailFolder.Draft && item.DeletedDate == null
+                    ? Url.Action("CreateMessage", "Message", new { draftId = msg.MessageId })
+                    : Url.Action("Detail", "Message", new { id = msg.MessageId });
 
                 <article class="msg-item @(item.IsRead ? "" : "unread")"
                          data-id="@item.MailboxItemId"
@@ -193,15 +288,19 @@
                          tabindex="0" title="Mesajı aç">
                     <div class="lead">
                         <input type="checkbox" class="m-check row-check" aria-label="Seç">
-                        @* item = benim kopyam: yıldız bilgisi kişiye özel (layout'taki dinleyici, 7.6) *@
-                        <button class="star-btn @(item.IsStarred ? "on" : "")" type="button" data-star data-id="@item.MailboxItemId"
-                                aria-label="@(item.IsStarred ? "Yıldızı kaldır" : "Yıldızla")">
-                            <i class="bi @(item.IsStarred ? "bi-star-fill" : "bi-star")"></i>
-                        </button>
+                        @* item = benim kopyam: yıldız bilgisi kişiye özel (layout'taki dinleyici, 7.6).
+                           Taslaklarda yıldız yok (9.1, karar 2-A) — Çöp Kutusu'ndaki taslaklar dahil. *@
+                        @if (item.Folder != MailFolder.Draft)
+                        {
+                            <button class="star-btn @(item.IsStarred ? "on" : "")" type="button" data-star data-id="@item.MailboxItemId"
+                                    aria-label="@(item.IsStarred ? "Yıldızı kaldır" : "Yıldızla")">
+                                <i class="bi @(item.IsStarred ? "bi-star-fill" : "bi-star")"></i>
+                            </button>
+                        }
                     </div>
-                    <span class="avatar @AvatarColor(msg.Sender.Email)">@Initials(senderName)</span>
+                    <span class="avatar @AvatarColor(who.Key)">@Initials(who.Name)</span>
                     <div class="mi-sender">
-                        <span class="sender">@senderName</span>
+                        <span class="sender">@(who.Label + who.Name)</span>
                         @if (!item.IsRead)
                         {
                             <span class="unread-dot"></span>
@@ -226,9 +325,9 @@
                 if (!isFiltered)
                 {
                     <div class="empty-list">
-                        <div class="ic"><i class="bi bi-inbox"></i></div>
-                        <h6>Gelen kutunuz boş</h6>
-                        <div>Yeni mesajlar geldiğinde burada listelenecek.</div>
+                        <div class="ic"><i class="bi @Model.EmptyIcon"></i></div>
+                        <h6>@Model.EmptyTitle</h6>
+                        <div>@Model.EmptyText</div>
                     </div>
                 }
                 else
@@ -236,7 +335,7 @@
                     <div class="empty-list">
                         <div class="ic"><i class="bi bi-search-heart"></i></div>
                         <h6>Sonuç bulunamadı</h6>
-                        <div>Arama veya filtre kriterlerini değiştirin ya da <a asp-action="Inbox">filtreleri temizleyin</a>.</div>
+                        <div>Arama veya filtre kriterlerini değiştirin ya da <a asp-action="@Model.ActionName">filtreleri temizleyin</a>.</div>
                     </div>
                 }
             }
@@ -250,7 +349,7 @@
                 <nav class="pager" aria-label="Sayfalar">
                     @if (Model.Page > 1)
                     {
-                        <a asp-action="Inbox" asp-all-route-data="Model.RouteWith(page: Model.Page - 1)" aria-label="Önceki sayfa"><i class="bi bi-chevron-left"></i></a>
+                        <a asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(page: Model.Page - 1)" aria-label="Önceki sayfa"><i class="bi bi-chevron-left"></i></a>
                     }
                     else
                     {
@@ -259,12 +358,12 @@
 
                     @for (int p = 1; p <= Model.TotalPages; p++)
                     {
-                        <a class="@(p == Model.Page ? "active" : "")" asp-action="Inbox" asp-all-route-data="Model.RouteWith(page: p)">@p</a>
+                        <a class="@(p == Model.Page ? "active" : "")" asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(page: p)">@p</a>
                     }
 
                     @if (Model.Page < Model.TotalPages)
                     {
-                        <a asp-action="Inbox" asp-all-route-data="Model.RouteWith(page: Model.Page + 1)" aria-label="Sonraki sayfa"><i class="bi bi-chevron-right"></i></a>
+                        <a asp-action="@Model.ActionName" asp-all-route-data="Model.RouteWith(page: Model.Page + 1)" aria-label="Sonraki sayfa"><i class="bi bi-chevron-right"></i></a>
                     }
                     else
                     {
@@ -328,13 +427,19 @@
                aktif kategori/arama kapsamına göre: aynı adres parametreleriyle sunucudan istenir. */
             async function refreshScopedCounts() {
                 try {
-                    const response = await fetch(bar.dataset.countsUrl + location.search);
+                    // countsUrl zaten "?view=Inbox" içeriyor: sayfanın parametrelerini ikinci bir "?" ile
+                    // eklemek yerine URL nesnesine tek tek ekliyoruz (9.2).
+                    const url = new URL(bar.dataset.countsUrl, location.origin);
+                    new URLSearchParams(location.search).forEach((value, key) => url.searchParams.set(key, value));
+                    const response = await fetch(url);
                     if (!response.ok) return;
                     const c = await response.json();
-                    document.getElementById('countAll').textContent = c.all;
-                    document.getElementById('countUnread').textContent = c.unread;
-                    document.getElementById('countStarred').textContent = c.starred;
-                    document.getElementById('unreadPill').textContent = `${c.unread} okunmamış`;
+                    // Okunmamış çipi ve rozeti her klasörde yok (9.3): eleman varsa güncelle
+                    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+                    set('countAll', c.all);
+                    set('countUnread', c.unread);
+                    set('countStarred', c.starred);
+                    set('unreadPill', `${c.unread} okunmamış`);
                     const sub = document.getElementById('inboxSub');
                     sub.textContent = `${c.all} mesaj${sub.dataset.suffix}`;
                 } catch {
@@ -366,6 +471,21 @@
                         });
                         // Sayfada satır kalmadıysa bir sonraki sayfanın mesajlarını getirmek için yenile.
                         if (!rows().length) setTimeout(() => location.reload(), 5200);
+                    } else if (btn.dataset.bulk === 'restore') {
+                        // Çöp Kutusu → mesajlar geldikleri klasöre döner (Folder hiç değişmemişti)
+                        const result = await Mailora.post(bar.dataset.restoreUrl, { ids });
+                        ids.forEach(id => rowById(id)?.remove());
+                        refreshBar();
+                        Mailora.showToast(`${result.count} mesaj geri alındı.`, 'bi-arrow-counterclockwise');
+                        if (!rows().length) setTimeout(() => location.reload(), 1500);
+                    } else if (btn.dataset.bulk === 'forever') {
+                        // Geri alınamaz işlem → ÖNCE onay (geri alınabilir işlemde "Geri al" toast'u yeterliydi)
+                        if (!confirm(`${ids.length} mesaj kalıcı olarak silinecek. Bu işlem geri alınamaz. Devam edilsin mi?`)) return;
+                        const result = await Mailora.post(bar.dataset.foreverUrl, { ids });
+                        ids.forEach(id => rowById(id)?.remove());
+                        refreshBar();
+                        Mailora.showToast(`${result.count} mesaj kalıcı olarak silindi.`, 'bi-x-octagon');
+                        if (!rows().length) setTimeout(() => location.reload(), 1500);
                     } else {
                         const isRead = btn.dataset.bulk === 'read';
                         const result = await Mailora.post(bar.dataset.readUrl, { ids, isRead });

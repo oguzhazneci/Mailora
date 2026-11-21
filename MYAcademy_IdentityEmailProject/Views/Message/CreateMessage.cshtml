@@ -3,8 +3,12 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Mvc.Rendering
 @{
-    ViewData["Title"] = "Yeni Mesaj";
-    ViewData["ActiveMenu"] = "compose";        // Sidebar'daki data-page="compose" / data-menu="compose" linkini aktif yapar
+    // Taslak düzenleniyorsa aynı sayfa "Taslağı Düzenle" olur (9.6)
+    bool isDraftEdit = Model.DraftId.HasValue;
+    // Yanıtla / İlet modunda controller başlığı verir (9.7)
+    string heading = ViewData["ComposeHeading"] as string ?? (isDraftEdit ? "Taslağı Düzenle" : "Yeni Mesaj");
+    ViewData["Title"] = heading;
+    ViewData["ActiveMenu"] = isDraftEdit ? "drafts" : "compose";        // Sidebar'daki data-page="compose" / data-menu="compose" linkini aktif yapar
     Layout = "_MessageLayout";
 
     // Controller'da: LoadCategoriesAsync() → ViewBag.Categories = SelectList
@@ -78,8 +82,8 @@
 
     <div class="cmp-head">
         <div>
-            <h1>Yeni Mesaj</h1>
-            <p>Yeni bir e-posta oluşturun ve gönderin</p>
+            <h1>@heading</h1>
+            <p>@(isDraftEdit ? "Kaydedilmiş taslağınızı tamamlayın ve gönderin" : "Yeni bir e-posta oluşturun ve gönderin")</p>
         </div>
         <div class="cmp-status" id="cmpStatus" data-state="empty" aria-live="polite">
             <span class="sdot"></span><span class="stext">Yeni mesaj</span>
@@ -192,13 +196,17 @@
                 @Html.Raw(Model?.Body)
             </div>
             <input type="hidden" asp-for="Body" id="cmpContent">
+            @* Düzenlenen taslağın Id'si. İstemciden gelir: sunucu sahipliğini ve hâlâ taslak olduğunu kontrol eder (9.6). *@
+            <input type="hidden" asp-for="DraftId">
             <div class="cmp-counter" id="cmpCounter">0 kelime · 0 karakter</div>
             <div class="cmp-err">@ErrText(nameof(Model.Body))</div>
         </div>
 
         <!-- Alt işlem çubuğu -->
         <div class="cmp-actions">
-            <button type="submit" class="btn-send" id="cmpSend"><span class="lbl"><i class="bi bi-send-fill"></i> Mesajı Gönder</span></button>
+            @* İki gönder butonu, tek form: hangi butona basıldığı "intent" değeriyle sunucuya gider (9.6) *@
+            <button type="submit" class="btn-send" id="cmpSend" name="intent" value="send"><span class="lbl"><i class="bi bi-send-fill"></i> Mesajı Gönder</span></button>
+            <button type="submit" class="btn-soft" id="cmpDraft" name="intent" value="draft"><span class="lbl"><i class="bi bi-file-earmark-text"></i> Taslak Olarak Kaydet</span></button>
             <button type="button" class="btn-soft danger" id="cmpClear"><i class="bi bi-x-circle"></i> Temizle</button>
             <span class="cmp-hint"><span class="kbd-s">Ctrl</span> + <span class="kbd-s">Enter</span> ile gönder</span>
         </div>
@@ -233,6 +241,7 @@
 
             // Sunucudaki kurallar ve mesajlar (CreateMessageViewModel) — iki tarafta aynı metin
             const RULES = { emailMax: 256, subjectMax: 200, bodyMax: 100000 };
+            let savingDraft = false;   // durum metni: "Gönderiliyor…" mi "Kaydediliyor…" mu
             const MSG = {
                 toRequired: 'Alıcı adresi zorunludur.',
                 toInvalid: 'Geçerli bir e-posta adresi girin.',
@@ -241,7 +250,8 @@
                 subjectRequired: 'Konu zorunludur.',
                 subjectTooLong: 'Konu en fazla 200 karakter olabilir.',
                 bodyRequired: 'Mesaj içeriği boş olamaz.',
-                bodyTooLong: 'Mesaj içeriği çok uzun.'
+                bodyTooLong: 'Mesaj içeriği çok uzun.',
+                draftEmpty: 'Boş bir taslak kaydedilemez.'
             };
             const STATE_CMDS = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList', 'insertOrderedList', 'justifyLeft', 'justifyCenter', 'justifyRight'];
             const BLOCK_LABELS = { p: 'Paragraf', div: 'Paragraf', h1: 'Başlık 1', h2: 'Başlık 2', h3: 'Başlık 3', blockquote: 'Alıntı' };
@@ -259,7 +269,7 @@
                 const empty = !to.value.trim() && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
                 const state = sending ? 'saving' : empty ? 'empty' : 'dirty';
                 el.dataset.state = state;
-                $('.stext', el).textContent = { empty: 'Yeni mesaj', dirty: 'Gönderilmedi', saving: 'Gönderiliyor…' }[state];
+                $('.stext', el).textContent = { empty: 'Yeni mesaj', dirty: 'Gönderilmedi', saving: savingDraft ? 'Kaydediliyor…' : 'Gönderiliyor…' }[state];
             }
             function markDirty() { dirty = true; updateStatus(); }
 
@@ -420,19 +430,45 @@
                 return true;
             }
 
+            // Taslak kuralları: eksik olabilir, ama boş olamaz ve sınırları aşamaz (sunucudaki ValidateDraft ile aynı)
+            function validateDraft() {
+                let first = null;
+                const fail = (row, msg, el) => { setFieldError(row, msg); if (!first) first = el; };
+                const empty = !to.value.trim() && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
+
+                if (empty) { showToast(MSG.draftEmpty, 'bi-info-circle'); return false; }
+                if (to.value.trim().length > RULES.emailMax) fail($('#rowTo'), MSG.toTooLong, to);
+                if (subject.value.trim().length > RULES.subjectMax) fail($('#rowSubject'), MSG.subjectTooLong, subject);
+                if (content.value.length > RULES.bodyMax) fail($('#rowBody'), MSG.bodyTooLong, editor);
+
+                if (first) { first.focus(); return false; }
+                return true;
+            }
+
             form.addEventListener('submit', e => {
                 closePops();
                 to.value = to.value.trim();
                 syncContent();
                 if (sending) { e.preventDefault(); return; }
-                if (!validate()) { e.preventDefault(); showToast('Lütfen işaretli alanları kontrol edin.', 'bi-exclamation-circle'); return; }
 
-                sending = true; dirty = false;
-                const btn = $('#cmpSend');
-                btn.disabled = true;
-                $('.lbl', btn).innerHTML = '<span class="spin"></span> Gönderiliyor…';
+                // Hangi buton? Ctrl+Enter (requestSubmit) butonsuz gönderir → "send" sayılır.
+                const isDraft = e.submitter?.value === 'draft';
+                const ok = isDraft ? validateDraft() : validate();
+                if (!ok) {
+                    e.preventDefault();
+                    if (!isDraft) showToast('Lütfen işaretli alanları kontrol edin.', 'bi-exclamation-circle');
+                    return;
+                }
+
+                sending = true; dirty = false; savingDraft = isDraft;
+                // Butonu "disabled" YAPMIYORUZ: disabled bir buton forma eklenmez ve intent değeri kaybolur.
+                // Çift tıklamayı "sending" bayrağı engelliyor; buton sadece görsel olarak meşgul gösteriliyor.
+                const btn = isDraft ? $('#cmpDraft') : $('#cmpSend');
+                btn.setAttribute('aria-busy', 'true');
+                btn.style.pointerEvents = 'none';
+                $('.lbl', btn).innerHTML = `<span class="spin"></span> ${isDraft ? 'Kaydediliyor…' : 'Gönderiliyor…'}`;
                 updateStatus();
-                // Form normal şekilde POST edilir → MessageController.CreateMessage(CreateMessageViewModel model)
+                // Form normal şekilde POST edilir → MessageController.CreateMessage(model, intent)
             });
 
             /* --- Temizle (onaylı) --- */
