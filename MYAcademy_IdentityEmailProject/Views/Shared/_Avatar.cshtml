@@ -1,0 +1,12 @@
+﻿@model AvatarViewModel
+@* Tek avatar şablonu (10.4): fotoğraf varsa resim, yoksa renkli baş harfler.
+   Kullanım: <partial name="_Avatar" model='new AvatarViewModel(ad, eposta, dosya, "ek-sinif")' /> *@
+@if (AvatarHelper.IsAvatarFile(Model.PhotoFile))
+{
+    @* loading="lazy": ekranda görünmeyen avatarlar kaydırılana kadar indirilmez *@
+    <span class="avatar @Model.CssClass"><img src="@Url.Action("Avatar", "Profile", new { id = Model.PhotoFile })" alt="" loading="lazy"></span>
+}
+else
+{
+    <span class="avatar @AvatarHelper.ColorClass(Model.Key) @Model.CssClass">@AvatarHelper.Initials(Model.Name)</span>
+}

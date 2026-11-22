@@ -18,7 +18,6 @@
 }
 @functions {
     static readonly CultureInfo Tr = new("tr-TR");
-    static readonly string[] AvatarColors = { "av-lav", "av-blue", "av-mint", "av-rose", "av-peach", "av-sun" };
 
     static string DisplayName(AppUser user)
     {
@@ -28,35 +27,24 @@
 
     // Satırda gösterilecek "karşı taraf" (9.3). Yön, görünümden değil satırın KLASÖRÜNDEN gelir:
     // Gelen kopyada gönderen, Gönderilen/Taslak kopyada alıcı(lar). Yıldızlı ve Çöp Kutusu karışık listelerdir.
-    (string Label, string Name, string? Key) Counterpart(MailboxItem item)
+    // Photo: karşı tarafın avatar dosyası (10.4). Gönderen Include ile zaten yüklü; alıcıların fotoğrafı
+    // adlarıyla aynı tek sorgudan (UserPhotos) gelir — ek sorgu yok.
+    (string Label, string Name, string? Key, string? Photo) Counterpart(MailboxItem item)
     {
         var msg = item.Message;
         if (item.Folder == MailFolder.Inbox)
-            return ("", DisplayName(msg.Sender), msg.Sender.Email);
+            return ("", DisplayName(msg.Sender), msg.Sender.Email, msg.Sender.ImageUrl);
 
         var recipients = msg.Recipients.OrderBy(r => r.RecipientType).ToList();
         if (recipients.Count == 0)
-            return ("Kime: ", "Alıcı yok", null);
+            return ("Kime: ", "Alıcı yok", null, null);
 
         var first = recipients[0];
         // Kayıtlı alıcının adı controller'ın tek sorguyla doldurduğu sözlükten; dış alıcıda adres
         string name = first.UserId != null && Model.UserNames.TryGetValue(first.UserId, out var n) ? n : first.Email;
+        string? photo = first.UserId != null && Model.UserPhotos.TryGetValue(first.UserId, out var f) ? f : null;
         string more = recipients.Count > 1 ? $" +{recipients.Count - 1}" : "";
-        return ("Kime: ", name + more, first.Email);
-    }
-
-    static string Initials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 0 ? "?" : string.Concat(parts.Take(2).Select(p => p[0])).ToUpper(Tr);
-    }
-
-    // Aynı gönderen her zaman aynı renkte görünür
-    static string AvatarColor(string? key)
-    {
-        var h = 0;
-        foreach (var c in key ?? "") h = (h * 31 + c) & 0x7fffffff;
-        return AvatarColors[h % AvatarColors.Length];
+        return ("Kime: ", name + more, first.Email, photo);
     }
 
     // HTML içerikten tek satırlık düz metin özet
@@ -298,7 +286,7 @@
                             </button>
                         }
                     </div>
-                    <span class="avatar @AvatarColor(who.Key)">@Initials(who.Name)</span>
+                    <partial name="_Avatar" model="new AvatarViewModel(who.Name, who.Key, who.Photo)" />
                     <div class="mi-sender">
                         <span class="sender">@(who.Label + who.Name)</span>
                         @if (!item.IsRead)

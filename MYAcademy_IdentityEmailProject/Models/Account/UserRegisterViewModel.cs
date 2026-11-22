@@ -5,11 +5,14 @@ namespace MYAcademy_IdentityEmailProject.Models.Account
     public class UserRegisterViewModel
     {
         [Required(ErrorMessage = "Ad alanı zorunludur.")]
+        [StringLength(PersonNameRules.MaxLength, ErrorMessage = "Ad en fazla 50 karakter olabilir.")]
+        [RegularExpression(PersonNameRules.Pattern, ErrorMessage = PersonNameRules.PatternMessage)]
         public string Name { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Soyad alanı zorunludur.")]
+        [StringLength(PersonNameRules.MaxLength, ErrorMessage = "Soyad en fazla 50 karakter olabilir.")]
+        [RegularExpression(PersonNameRules.Pattern, ErrorMessage = PersonNameRules.PatternMessage)]
         public string Surname { get; set; } = string.Empty;
-
         [Required(ErrorMessage = "Kullanıcı adı zorunludur.")]
         public string Username { get; set; } = string.Empty;
 

@@ -19,8 +19,6 @@
     var sender = msg.Sender;
     var senderName = $"{sender.Name} {sender.Surname}".Trim();
     if (senderName.Length == 0) senderName = sender.Email ?? "Bilinmeyen gönderen";
-    var initials = string.Concat(senderName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                                           .Take(2).Select(p => p[0])).ToUpper(tr);
 
     var sentDate = msg.SentDate ?? msg.UpdatedDate;
     var toList = string.Join(", ", msg.Recipients.Select(r => r.Email));
@@ -57,6 +55,7 @@
     /* yanıtın yanıtı */
 </style>
 
+
 <div class="msg-page">
     <div class="mp-top">
         <a class="btn-soft mp-back" asp-controller="Message" asp-action="@backAction"><i class="bi bi-arrow-left"></i> Geri</a>
@@ -86,7 +85,7 @@
             </div>
 
             <div class="pv-sender">
-                <span class="avatar av-lav">@initials</span>
+                <partial name="_Avatar" model="new AvatarViewModel(senderName, sender.Email, sender.ImageUrl)" />
                 <div class="who">
                     <div class="nm">@senderName</div>
                     <div class="em">@sender.Email</div>

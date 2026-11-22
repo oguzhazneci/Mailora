@@ -1,0 +1,233 @@
+﻿@model ProfileViewModel
+@{
+    ViewData["Title"] = "Profilim";
+    ViewData["ActiveMenu"] = "profile";          // sidebar'daki data-page="profile"
+    Layout = "_MessageLayout";
+
+    // Sunucu tarafı (ModelState) hataları — compose sayfasındaki yardımcıların aynısı
+    string ErrClass(string key) => ViewData.ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? "has-error" : "";
+    string? ErrText(string key) => ViewData.ModelState.TryGetValue(key, out var e) ? e.Errors.FirstOrDefault()?.ErrorMessage : null;
+    var generalError = ErrText(string.Empty);
+}
+
+<style>
+    .pf-desc {
+        margin: 10px 0 0;
+        color: #5D6075;
+        font-size: 13.5px;
+        line-height: 1.6;
+        white-space: pre-line;
+        max-width: 640px;
+    }
+
+    .pf-cam {
+        cursor: pointer;
+    }
+    /* Dosya seçici görünmez ama erişilebilir kalır (display:none klavye odağını da kaldırırdı) */
+    .pf-file {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .pf-avatar-wrap.is-uploading .pf-avatar {
+        opacity: .5;
+    }
+</style>
+
+<section class="profile">
+
+    <div class="pf-head">
+        <h1>Profilim</h1>
+        <p>Diğer Mailora kullanıcılarının sizi nasıl gördüğünü buradan düzenleyin</p>
+    </div>
+
+    <!-- Üst kart: KAYITLI bilgiler (form hatalıyken bile değişmez) -->
+    <div class="pf-hero">
+        <div class="pf-cover"></div>
+        <div class="pf-main">
+            <div class="pf-avatar-wrap" id="pfAvatarWrap">
+                @* Ortak avatar şablonu (10.4): renk e-postadan gelir, listedeki rengin aynısı *@
+                <partial name="_Avatar" model='new AvatarViewModel(Model.DisplayName, Model.Email, Model.PhotoFile, "pf-avatar")' />
+
+                @* Dosya yükleyen form: enctype olmadan tarayıcı dosyanın sadece ADINI gönderir (Kavram 1) *@
+                <form id="pfPhotoForm" method="post" enctype="multipart/form-data" asp-controller="Profile" asp-action="UploadPhoto">
+                    <input type="file" name="photo" id="pfPhoto" class="pf-file" accept="image/jpeg,image/png,image/webp">
+                </form>
+                <label class="pf-cam" for="pfPhoto" title="Fotoğrafı değiştir"><i class="bi bi-camera"></i></label>
+            </div>
+            <div class="pf-id">
+                <div class="pf-name-row">
+                    <h2>@Model.DisplayName</h2>
+                </div>
+                <div class="pf-username">@("@" + Model.UserName)</div>
+                <div class="pf-meta">
+                    <span><i class="bi bi-envelope"></i> @Model.Email</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Model.SavedDescription))
+                {
+                    @* Razor encode eder; satır sonları CSS (pre-line) ile korunur *@
+                    <p class="pf-desc">@Model.SavedDescription</p>
+                }
+            </div>
+            @if (Model.PhotoFile != null)
+            {
+                <div class="pf-hero-actions">
+                    <form method="post" asp-controller="Profile" asp-action="RemovePhoto"
+                          onsubmit="return confirm('Profil fotoğrafınız kaldırılsın mı?');">
+                        <button type="submit" class="btn-soft"><i class="bi bi-person-x"></i> Fotoğrafı kaldır</button>
+                    </form>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="pf-grid">
+
+        <!-- Sol: düzenleme formu -->
+        <div class="pf-col">
+            <form class="pf-card" id="pfForm" method="post" asp-controller="Profile" asp-action="Index" novalidate autocomplete="off">
+                <div class="pf-card-head">
+                    <div class="ic" style="background:var(--lavender);color:var(--accent-dark)"><i class="bi bi-person-vcard"></i></div>
+                    <div>
+                        <h3>Kişisel Bilgiler</h3>
+                        <p>Adınız gönderdiğiniz mesajlarda ve alıcıların gelen kutusunda görünür.</p>
+                    </div>
+                </div>
+
+                <div class="pf-card-body">
+                    <div class="pf-form-grid">
+                        <div class="pf-field @ErrClass(nameof(Model.Name))">
+                            <label for="pfName">Ad <span class="req">*</span></label>
+                            <div class="pf-input-wrap">
+                                <i class="bi bi-person lead"></i>
+                                <input asp-for="Name" id="pfName" class="pf-input" maxlength="50" autocomplete="given-name">
+                            </div>
+                            <div class="pf-error">@ErrText(nameof(Model.Name))</div>
+                        </div>
+
+                        <div class="pf-field @ErrClass(nameof(Model.Surname))">
+                            <label for="pfSurname">Soyad <span class="req">*</span></label>
+                            <div class="pf-input-wrap">
+                                <i class="bi bi-person lead"></i>
+                                <input asp-for="Surname" id="pfSurname" class="pf-input" maxlength="50" autocomplete="family-name">
+                            </div>
+                            <div class="pf-error">@ErrText(nameof(Model.Surname))</div>
+                        </div>
+
+                        <div class="pf-field span-2 @ErrClass(nameof(Model.Description))">
+                            <label for="pfDesc">Hakkımda</label>
+                            <div class="pf-input-wrap">
+                                <textarea asp-for="Description" id="pfDesc" class="pf-input" maxlength="500" rows="4"
+                                          placeholder="Kendinizden kısaca bahsedin"></textarea>
+                            </div>
+                            <div class="pf-hint"><span>İsteğe bağlı</span><span id="pfDescCount">0 / 500</span></div>
+                            <div class="pf-error">@ErrText(nameof(Model.Description))</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pf-card-foot">
+                    <span class="pf-dirty" id="pfDirty">Tüm değişiklikler kaydedildi</span>
+                    <button type="submit" class="btn-send"><i class="bi bi-check2"></i> Kaydet</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Sağ: hesap bilgileri (salt okunur) -->
+        <div class="pf-col">
+            <div class="pf-card">
+                <div class="pf-card-head">
+                    <div class="ic" style="background:var(--mint);color:#3E9A77"><i class="bi bi-shield-check"></i></div>
+                    <div>
+                        <h3>Hesap</h3>
+                        <p>Giriş bilgileriniz</p>
+                    </div>
+                </div>
+                <div class="pf-card-body">
+                    <ul class="pf-list">
+                        <li>
+                            <span class="k"><i class="bi bi-envelope"></i> E-posta</span>
+                            <span class="v">
+                                @Model.Email
+                                @if (Model.EmailConfirmed)
+                                {
+                                    <span class="pf-badge ok"><i class="bi bi-patch-check-fill"></i> Onaylı</span>
+                                }
+                            </span>
+                        </li>
+                        <li>
+                            <span class="k"><i class="bi bi-at"></i> Kullanıcı adı</span>
+                            <span class="v">@Model.UserName</span>
+                        </li>
+                        <li>
+                            <span class="k"><i class="bi bi-key"></i> Şifre</span>
+                            <span class="v"><a class="link-btn" asp-controller="Settings" asp-action="Index">Değiştir</a></span>
+                        </li>
+                    </ul>
+                    <div class="pf-note">
+                        <i class="bi bi-info-circle"></i>
+                        <span>E-posta adresi ve kullanıcı adı değiştirilemez.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.getElementById('pfForm');
+            const inputs = [...form.querySelectorAll('.pf-input')];
+            const initial = inputs.map(i => i.value);
+            const dirtyEl = document.getElementById('pfDirty');
+            const desc = document.getElementById('pfDesc');
+            const count = document.getElementById('pfDescCount');
+
+            // Sunucu hatayla döndüyse formdaki değerler henüz KAYDEDİLMEDİ demektir
+            const returnedWithErrors = form.querySelector('.has-error') !== null;
+
+            function update() {
+                const dirty = returnedWithErrors || inputs.some((input, i) => input.value !== initial[i]);
+                dirtyEl.classList.toggle('is-dirty', dirty);
+                dirtyEl.textContent = dirty ? 'Kaydedilmemiş değişiklikler var' : 'Tüm değişiklikler kaydedildi';
+                count.textContent = `${desc.value.length} / 500`;
+            }
+
+            // Kullanıcı alanı düzeltmeye başlayınca o alanın hata görünümünü kaldır
+            form.addEventListener('input', e => {
+                const field = e.target.closest('.pf-field');
+                if (field) {
+                    field.classList.remove('has-error');
+                    const err = field.querySelector('.pf-error');
+                    if (err) err.textContent = '';
+                }
+                update();
+            });
+            update();
+
+            /* --- Profil fotoğrafı (10.3): seçilince formu gönder ---
+               Buradaki kontroller sadece kullanıcıyı beklemekten kurtarır; asıl kontrol sunucuda. */
+            const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+            const photoInput = document.getElementById('pfPhoto');
+            photoInput.addEventListener('change', () => {
+                const file = photoInput.files[0];
+                if (!file) return;
+                if (file.size > MAX_PHOTO_BYTES) {
+                    Mailora.showToast('Fotoğraf en fazla 5 MB olabilir.', 'bi-exclamation-triangle');
+                    photoInput.value = '';
+                    return;
+                }
+                document.getElementById('pfAvatarWrap').classList.add('is-uploading');
+                Mailora.showToast('Fotoğraf yükleniyor…', 'bi-cloud-arrow-up');
+                document.getElementById('pfPhotoForm').submit();
+            });
+
+            const generalError = @Json.Serialize(generalError);
+            if (generalError) Mailora.showToast(Mailora.escapeHtml(generalError), 'bi-exclamation-circle');
+        })();
+    </script>
+}

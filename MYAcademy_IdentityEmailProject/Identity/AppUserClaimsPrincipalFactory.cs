@@ -1,7 +1,8 @@
-﻿using System.Security.Claims;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using MYAcademy_IdentityEmailProject.Entities;
+using MYAcademy_IdentityEmailProject.Helpers;
+using System.Security.Claims;
 
 namespace MYAcademy_IdentityEmailProject.Identity
 {
@@ -26,6 +27,12 @@ namespace MYAcademy_IdentityEmailProject.Identity
 
             if (!string.IsNullOrWhiteSpace(user.Surname))
                 identity.AddClaim(new Claim(ClaimTypes.Surname, user.Surname));
+
+            // Profil fotoğrafı (10.4). Fotoğraf yoksa claim hiç eklenmez.
+            if (AvatarHelper.IsAvatarFile(user.ImageUrl))
+            {
+                identity.AddClaim(new Claim(AppClaimTypes.Avatar, user.ImageUrl));
+            }
 
             return identity;
         }

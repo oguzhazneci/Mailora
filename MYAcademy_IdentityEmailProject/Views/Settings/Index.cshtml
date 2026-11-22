@@ -1,0 +1,156 @@
+﻿@model ChangePasswordViewModel
+@{
+    ViewData["Title"] = "Ayarlar";
+    ViewData["ActiveMenu"] = "settings";          // sidebar'daki data-page="settings"
+    Layout = "_MessageLayout";
+
+    string ErrClass(string key) => ViewData.ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? "has-error" : "";
+    string? ErrText(string key) => ViewData.ModelState.TryGetValue(key, out var e) ? e.Errors.FirstOrDefault()?.ErrorMessage : null;
+}
+
+<section class="profile">
+
+    <div class="pf-head">
+        <h1>Ayarlar</h1>
+        <p>Hesabınızın güvenliğini buradan yönetin</p>
+    </div>
+
+    <div class="pf-grid">
+
+        <!-- Sol: şifre değiştir -->
+        <div class="pf-col">
+            <form class="pf-card" id="pwForm" method="post" asp-controller="Settings" asp-action="ChangePassword" novalidate>
+                <div class="pf-card-head">
+                    <div class="ic" style="background:var(--lavender);color:var(--accent-dark)"><i class="bi bi-key"></i></div>
+                    <div>
+                        <h3>Şifre Değiştir</h3>
+                        <p>Değişiklikten sonra diğer cihazlardaki oturumlarınız kapanır.</p>
+                    </div>
+                </div>
+
+                <div class="pf-card-body">
+                    <div class="pf-stack">
+                        @* type="password" alanlar hata sonrasında DOLDURULMAZ: şifre asla sayfaya geri yazılmaz (Kavram 1) *@
+                        <div class="pf-field @ErrClass(nameof(Model.CurrentPassword))">
+                            <label for="pwCurrent">Mevcut şifre <span class="req">*</span></label>
+                            <div class="pf-input-wrap">
+                                <i class="bi bi-lock lead"></i>
+                                <input asp-for="CurrentPassword" id="pwCurrent" type="password" class="pf-input has-eye" autocomplete="current-password">
+                                <button type="button" class="tool-btn pf-eye" data-eye="pwCurrent" aria-label="Şifreyi göster"><i class="bi bi-eye"></i></button>
+                            </div>
+                            <div class="pf-error">@ErrText(nameof(Model.CurrentPassword))</div>
+                        </div>
+
+                        <div class="pf-field @ErrClass(nameof(Model.NewPassword))">
+                            <label for="pwNew">Yeni şifre <span class="req">*</span></label>
+                            <div class="pf-input-wrap">
+                                <i class="bi bi-shield-lock lead"></i>
+                                <input asp-for="NewPassword" id="pwNew" type="password" class="pf-input has-eye" autocomplete="new-password">
+                                <button type="button" class="tool-btn pf-eye" data-eye="pwNew" aria-label="Şifreyi göster"><i class="bi bi-eye"></i></button>
+                            </div>
+                            <div class="pf-error">@ErrText(nameof(Model.NewPassword))</div>
+
+                            @* Kural listesi Program.cs'teki Identity seçeneklerinin AYNASI: sadece yol gösterir, karar sunucuda *@
+                            <div class="pf-strength" id="pwStrength" data-level="0"><span></span><span></span><span></span><span></span></div>
+                            <ul class="pf-rules" id="pwRules">
+                                <li data-rule="length"><i class="bi bi-check-circle-fill"></i> En az 8 karakter</li>
+                                <li data-rule="upper"><i class="bi bi-check-circle-fill"></i> Büyük harf</li>
+                                <li data-rule="lower"><i class="bi bi-check-circle-fill"></i> Küçük harf</li>
+                                <li data-rule="digit"><i class="bi bi-check-circle-fill"></i> Rakam</li>
+                                <li data-rule="symbol"><i class="bi bi-check-circle-fill"></i> Özel karakter</li>
+                            </ul>
+                        </div>
+
+                        <div class="pf-field @ErrClass(nameof(Model.ConfirmNewPassword))">
+                            <label for="pwConfirm">Yeni şifre (tekrar) <span class="req">*</span></label>
+                            <div class="pf-input-wrap">
+                                <i class="bi bi-shield-lock lead"></i>
+                                <input asp-for="ConfirmNewPassword" id="pwConfirm" type="password" class="pf-input has-eye" autocomplete="new-password">
+                                <button type="button" class="tool-btn pf-eye" data-eye="pwConfirm" aria-label="Şifreyi göster"><i class="bi bi-eye"></i></button>
+                            </div>
+                            <div class="pf-error">@ErrText(nameof(Model.ConfirmNewPassword))</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pf-card-foot">
+                    <span class="pf-lastpw"><i class="bi bi-envelope-check"></i> Değişiklik e-posta adresinize bildirilir.</span>
+                    <button type="submit" class="btn-send"><i class="bi bi-check2"></i> Şifreyi Değiştir</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Sağ: oturumlar -->
+        <div class="pf-col">
+            <div class="pf-card">
+                <div class="pf-card-head">
+                    <div class="ic" style="background:var(--peach);color:#C8774A"><i class="bi bi-laptop"></i></div>
+                    <div>
+                        <h3>Oturumlar</h3>
+                        <p>Başka bir cihazda açık kalan oturumlarınız</p>
+                    </div>
+                </div>
+                <div class="pf-card-body">
+                    <form method="post" asp-controller="Settings" asp-action="SignOutOtherSessions"
+                          onsubmit="return confirm('Bu tarayıcı dışındaki bütün oturumlarınız kapatılsın mı?');">
+                        <button type="submit" class="btn-soft"><i class="bi bi-box-arrow-right"></i> Diğer cihazlardan çıkış yap</button>
+                    </form>
+                    <div class="pf-note">
+                        <i class="bi bi-info-circle"></i>
+                        <span>Diğer cihazlar en geç 30 dakika içinde oturumu kapatılmış olarak görür. Bu tarayıcıdaki oturumunuz açık kalır.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            /* --- Şifreyi göster / gizle --- */
+            document.querySelectorAll('[data-eye]').forEach(btn => btn.addEventListener('click', () => {
+                const input = document.getElementById(btn.dataset.eye);
+                const show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+                btn.setAttribute('aria-label', show ? 'Şifreyi gizle' : 'Şifreyi göster');
+            }));
+
+            /* --- Kurallar: Identity'nin kontrolleriyle aynı (Kavram 3) ---
+               char.IsUpper / IsLower / IsDigit / !IsLetterOrDigit → Unicode sınıfları (u bayrağı) */
+            const RULES = {
+                length: v => v.length >= 8,
+                upper: v => /\p{Lu}/u.test(v),
+                lower: v => /\p{Ll}/u.test(v),
+                digit: v => /\p{Nd}/u.test(v),
+                symbol: v => /[^\p{L}\p{N}]/u.test(v)
+            };
+            const newPw = document.getElementById('pwNew');
+            const strength = document.getElementById('pwStrength');
+
+            function updateRules() {
+                const value = newPw.value;
+                let ok = 0;
+                document.querySelectorAll('#pwRules li').forEach(li => {
+                    const pass = RULES[li.dataset.rule](value);
+                    li.classList.toggle('ok', pass);
+                    if (pass) ok++;
+                });
+                // 5 kural → 4 seviyelik çubuk
+                strength.dataset.level = value ? String(Math.max(1, ok - 1)) : '0';
+            }
+            newPw.addEventListener('input', updateRules);
+            updateRules();
+
+            /* --- Düzeltmeye başlanan alanın hata görünümünü kaldır --- */
+            document.getElementById('pwForm').addEventListener('input', e => {
+                const field = e.target.closest('.pf-field');
+                if (!field) return;
+                field.classList.remove('has-error');
+                const err = field.querySelector('.pf-error');
+                if (err) err.textContent = '';
+            });
+        })();
+    </script>
+}

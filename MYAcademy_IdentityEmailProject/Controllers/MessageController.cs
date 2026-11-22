@@ -1,18 +1,19 @@
-﻿using System.Globalization;
-using System.Linq.Expressions;
-using System.Net;
-using System.Security.Claims;
-using System.Text.RegularExpressions;
-using Ganss.Xss;
+﻿using Ganss.Xss;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
+using MYAcademy_IdentityEmailProject.Helpers;
 using MYAcademy_IdentityEmailProject.Models;
 using MYAcademy_IdentityEmailProject.Models.Messages;
 using MYAcademy_IdentityEmailProject.Services;
+using System.Globalization;
+using System.Linq.Expressions;
+using System.Net;
+using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace MYAcademy_IdentityEmailProject.Controllers
 {
@@ -129,17 +130,23 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 .ToList();
 
             var userNames = new Dictionary<string, string>();
+            var userPhotos = new Dictionary<string, string>();
             if (recipientIds.Count > 0)
             {
                 var people = await _context.Users
-                    .Where(u => recipientIds.Contains(u.Id))          // SQL: WHERE Id IN (...)
-                    .Select(u => new { u.Id, u.Name, u.Surname, u.Email })
+                    .Where(u => recipientIds.Contains(u.Id))          // SQL: WHERE Id IN (...) — hâlâ TEK sorgu
+                    .Select(u => new { u.Id, u.Name, u.Surname, u.Email, u.ImageUrl })
                     .ToListAsync();
 
                 foreach (var p in people)
                 {
                     string fullName = $"{p.Name} {p.Surname}".Trim();
                     userNames[p.Id] = fullName.Length > 0 ? fullName : p.Email ?? "";
+
+                    if (AvatarHelper.IsAvatarFile(p.ImageUrl))
+                    {
+                        userPhotos[p.Id] = p.ImageUrl;
+                    }
                 }
             }
 
@@ -156,7 +163,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 TotalPages = totalPages,
                 TotalItems = totalItems,
                 PageSize = PageSize,
-                UserNames = userNames
+                UserNames = userNames,
+                UserPhotos = userPhotos
             };
 
             // Tüm klasörler aynı view dosyasını kullanır (9.1, karar 1-B)

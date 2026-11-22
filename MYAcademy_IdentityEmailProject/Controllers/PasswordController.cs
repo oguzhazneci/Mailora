@@ -147,52 +147,9 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return View(resetPasswordViewModel);
         }
 
-        // Giriş zorunlu: [AllowAnonymous] yok, global filtre korur.
+        // Şifre Değiştir 10.5'te Ayarlar'a taşındı. Eski adresi kullananlar yeni sayfaya gider.
         [HttpGet]
-        public IActionResult ChangePassword()
-        {
-            return View();
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ChangePassword(ChangePasswordViewModel changePasswordViewModel)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(changePasswordViewModel);
-            }
-
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
-            {
-                return Challenge();
-            }
-
-            var result = await _userManager.ChangePasswordAsync(user,
-                changePasswordViewModel.CurrentPassword, changePasswordViewModel.NewPassword);
-
-            if (!result.Succeeded)
-            {
-                foreach (var error in result.Errors)
-                {
-                    // "Mevcut şifre hatalı" mevcut şifre alanının, kural hataları yeni şifre alanının altında görünür.
-                    string fieldName = error.Code == nameof(IdentityErrorDescriber.PasswordMismatch)
-                        ? nameof(ChangePasswordViewModel.CurrentPassword)
-                        : nameof(ChangePasswordViewModel.NewPassword);
-                    ModelState.AddModelError(fieldName, error.Description);
-                }
-                return View(changePasswordViewModel);
-            }
-
-            // Security stamp değişti: bu tarayıcıya yeni stamp'li çerez ver ki kullanıcı oturumda kalsın.
-            // Diğer cihazlardaki eski çerezler SecurityStampValidator tarafından geçersiz sayılacak.
-            await _signInManager.RefreshSignInAsync(user);
-
-            TempData["SuccessMessage"] = "Şifreniz değiştirildi. Diğer cihazlardaki oturumlarınız kapatılacak.";
-            return RedirectToAction("ChangePassword");
-        }
-
+        public IActionResult ChangePassword() => RedirectToAction("Index", "Settings");
         private static string? DecodeToken(string encodedToken)
         {
             try

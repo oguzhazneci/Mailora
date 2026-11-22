@@ -1,12 +1,13 @@
-﻿using System.Globalization;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
+using MYAcademy_IdentityEmailProject.Identity;
 using MYAcademy_IdentityEmailProject.Models;
 using MYAcademy_IdentityEmailProject.Models.Layout;
+using System.Globalization;
+using System.Security.Claims;
 
 namespace MYAcademy_IdentityEmailProject.ViewComponents.MessageLayoutViewComponents
 {
@@ -38,6 +39,7 @@ namespace MYAcademy_IdentityEmailProject.ViewComponents.MessageLayoutViewCompone
             {
                 FullName = fullName,
                 Email = user.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
+                PhotoFile = UserClaimsPrincipal.FindFirstValue(AppClaimTypes.Avatar),
                 Initials = GetInitials(fullName)
             };
 
