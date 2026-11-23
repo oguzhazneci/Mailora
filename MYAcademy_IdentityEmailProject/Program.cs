@@ -45,6 +45,7 @@ builder.Services.AddDbContext<EmailContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IMailService, MailService>();
 builder.Services.AddScoped<IMailboxCounter, MailboxCounter>();
+builder.Services.AddScoped<IDashboardQueries, DashboardQueries>();
 
 // HTML temizleyici: izin listesindeki etiketleri bırakır, script ve olay özelliklerini siler.
 // Singleton: yapılandırması değiştirilmediği sürece bir örneğin paylaşılması güvenli.

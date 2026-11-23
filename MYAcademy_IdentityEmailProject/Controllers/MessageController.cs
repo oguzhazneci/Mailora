@@ -448,7 +448,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
            ===================================================================== */
 
         [HttpGet]
-        public async Task<IActionResult> CreateMessage(int? draftId, int? replyTo, int? forwardOf)
+        public async Task<IActionResult> CreateMessage(int? draftId, int? replyTo, int? forwardOf, string? to)
         {
             var model = new CreateMessageViewModel();
 
@@ -499,6 +499,12 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
                 model.Body = isReply ? BuildReplyQuote(source) : BuildForwardBlock(source);
                 ViewData["ComposeHeading"] = isReply ? "Yanıtla" : "İlet";
+            }
+
+            else if (!string.IsNullOrWhiteSpace(to) && to.Length <= 256)
+            {
+                // Dashboard'daki "yaz" butonu (11.3): sadece başlangıç değeri, doğrulama gönderimde (8.2)
+                model.ReceiverEmail = to.Trim();
             }
 
             await LoadCategoriesAsync();

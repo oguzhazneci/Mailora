@@ -7,18 +7,14 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 {
     public class HomeController : Controller
     {
+        // Uygulamanın TEK "ana sayfa" kararı (11.5). Ana sayfaya giden her yol buradan geçer.
         [AllowAnonymous]
         public IActionResult Index()
         {
-            // Ana sayfa bir yönlendirici: giriş yapmış kullanıcıyı uygulamaya,
-            // misafiri giriş sayfasına gönderir. (11. aşamada hedef Dashboard olacak.)
-            if (User.Identity?.IsAuthenticated == true)
-            {
-                return RedirectToAction("Inbox", "Message");
-            }
-            return RedirectToAction("SignIn", "Login");
+            return User.Identity?.IsAuthenticated == true
+                ? RedirectToAction("Index", "Dashboard")
+                : RedirectToAction("SignIn", "Login");
         }
-
         [AllowAnonymous]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()

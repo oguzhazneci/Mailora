@@ -23,7 +23,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         {
             if (User.Identity?.IsAuthenticated == true)
             {
-                return RedirectToAction("Inbox", "Message");
+                return RedirectToAction("Index", "Home");
             }
             ViewBag.ReturnUrl = returnUrl;
             return View();
@@ -53,7 +53,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 {
                     return LocalRedirect(returnUrl);
                 }
-                return RedirectToAction("Inbox", "Message");
+                return RedirectToAction("Index", "Home");
             }
 
             if (result.IsNotAllowed)

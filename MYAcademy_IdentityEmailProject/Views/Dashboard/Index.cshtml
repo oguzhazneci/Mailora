@@ -1,0 +1,499 @@
+﻿@model DashboardData
+@using System.Globalization
+@using System.Security.Claims
+@{
+    ViewData["Title"] = "Genel Bakış";
+    ViewData["ActiveMenu"] = "dashboard";        // sidebar'daki data-page="dashboard"
+    Layout = "_MessageLayout";
+
+    var now = DateTime.Now;
+    var s = Model.Stats;
+
+    // Ad çerezden (6.3): veritabanı sorgusu yok
+    string firstName = User.FindFirstValue(ClaimTypes.GivenName) ?? User.Identity?.Name ?? "";
+    string greeting = now.Hour switch
+    {
+        < 6 => "İyi geceler",
+        < 12 => "Günaydın",
+        < 18 => "İyi günler",
+        _ => "İyi akşamlar"
+    };
+
+    // Bugünkü olaylar: günlük serinin SON elemanı bugündür (11.2, Kavram 3)
+    var todayActivity = Model.Daily.LastOrDefault();
+    int receivedToday = todayActivity?.Received ?? 0;
+
+    // Kişi çubukları: en çok yazışılan kişiye göre oran
+    int maxContact = Model.Contacts.Count > 0 ? Model.Contacts.Max(c => c.Total) : 0;
+
+    /* ---------- Grafik verisi (11.4) ---------- */
+
+    // Günlük seri: etiketler sunucuda Türkçe biçimlenir (tarayıcının diline bırakılmaz)
+    bool hasActivity = Model.Daily.Any(d => d.Received > 0 || d.Sent > 0);
+    var chartData = new
+    {
+        labels = Model.Daily.Select(d => d.Date.ToString("d MMM", Tr)),
+        titles = Model.Daily.Select(d => d.Date.ToString("d MMMM dddd", Tr)),
+        received = Model.Daily.Select(d => d.Received),
+        sent = Model.Daily.Select(d => d.Sent)
+    };
+
+    // Kategori dağılımı: ilk 5 kategori + kalanlar "Diğer" (halka ve liste AYNI grupları gösterir)
+    const int TopCategories = 5;
+    var slices = Model.Categories.Take(TopCategories)
+        .Select(c => (Name: c.Name, Color: c.Color, Count: c.Count))
+        .ToList();
+    int otherCount = Model.Categories.Skip(TopCategories).Sum(c => c.Count);
+    if (otherCount > 0)
+    {
+        slices.Add(("Diğer", "#C9CBD6", otherCount));
+    }
+    int[] percents = Percentages(slices.Select(x => x.Count).ToArray());
+
+    var donutData = new
+    {
+        labels = slices.Select(x => x.Name),
+        colors = slices.Select(x => x.Color),
+        counts = slices.Select(x => x.Count)
+    };
+}
+@functions {
+    static readonly CultureInfo Tr = new("tr-TR");
+
+    // Bugün → saat, dün → "Dün", bu yıl → "21 Kas", daha eski → "21.11.2025"
+    static string ShortTime(DateTime? value)
+    {
+        if (value is not DateTime d) return "";
+        var today = DateTime.Today;
+        if (d.Date == today) return d.ToString("HH:mm", Tr);
+        if (d.Date == today.AddDays(-1)) return "Dün";
+        return d.Year == today.Year ? d.ToString("d MMM", Tr) : d.ToString("dd.MM.yyyy", Tr);
+    }
+
+    // Yüzdeler TOPLAMI 100 olsun: en büyük kalan yöntemi (Kavram 4).
+    // Önce herkese aşağı yuvarlanmış payı ver, eksik kalan puanları kesirli kısmı en büyük olanlara dağıt.
+    static int[] Percentages(int[] counts)
+    {
+        int total = counts.Sum();
+        var result = new int[counts.Length];
+        if (total == 0) return result;
+
+        var exact = counts.Select(c => c * 100.0 / total).ToArray();
+        for (int i = 0; i < counts.Length; i++) result[i] = (int)Math.Floor(exact[i]);
+
+        int missing = 100 - result.Sum();
+        foreach (int i in Enumerable.Range(0, counts.Length)
+                                    .OrderByDescending(i => exact[i] - Math.Floor(exact[i]))
+                                    .Take(missing))
+        {
+            result[i]++;
+        }
+        return result;
+    }
+}
+
+<style>
+    /* Temadaki .db-msg ve .db-tile buton için yazılmış; biz link kullanıyoruz (gezinme = GET, 3.6) */
+    a.db-msg, a.db-tile, a.db-stat, a.db-send { text-decoration: none; color: inherit; }
+    a.db-stat { display: block; }
+    .db-msg .db-cat { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+    .db-empty { padding: 22px 12px; text-align: center; color: var(--muted); font-size: 13px; background: var(--bg); border-radius: 12px; }
+    .db-empty i { display: block; font-size: 24px; color: var(--accent); margin-bottom: 6px; }
+</style>
+
+<section class="dashboard">
+
+    <!-- ============ KARŞILAMA ============ -->
+    <div class="db-welcome">
+        <div class="db-welcome-text">
+            <span class="db-date"><i class="bi bi-calendar3"></i> @now.ToString("d MMMM yyyy dddd", Tr)</span>
+            <h1>@(firstName.Length > 0 ? $"{greeting}, {firstName}" : greeting) <span class="wave">👋</span></h1>
+            <p>
+                @if (receivedToday > 0)
+                {
+                    @:Bugün @receivedToday yeni mesaj aldınız.
+                }
+                else
+                {
+                    @:Bugün henüz yeni mesaj almadınız.
+                }
+            </p>
+            <div class="db-welcome-row">
+                <a class="btn-send" asp-controller="Message" asp-action="CreateMessage"><i class="bi bi-pencil-square"></i> Yeni Mesaj</a>
+                <a class="btn-soft" asp-controller="Message" asp-action="Inbox"><i class="bi bi-inbox"></i> Gelen Kutusu</a>
+
+                @if (s.Unread > 0)
+                {
+                    <a class="db-chip warn" asp-controller="Message" asp-action="Inbox" asp-route-filter="Unread">
+                        <i class="bi bi-envelope-exclamation"></i> <b>@s.Unread</b> okunmamış
+                    </a>
+                }
+                else
+                {
+                    <span class="db-chip ok"><i class="bi bi-check2-circle"></i> Okunmamış mesaj yok</span>
+                }
+
+                @if (s.Drafts > 0)
+                {
+                    <a class="db-chip" asp-controller="Message" asp-action="Drafts"><i class="bi bi-file-earmark-text"></i> <b>@s.Drafts</b> taslak</a>
+                }
+            </div>
+        </div>
+
+        @* Süs illüstrasyonu (tema). Rozet GERÇEK okunmamış sayısı; 0 ise hiç gösterilmez. *@
+        <div class="db-illus" aria-hidden="true">
+            <i class="bi bi-send-fill plane"></i>
+            <span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span>
+            <div class="env">
+                <div class="letter"><i></i><i></i><i></i></div>
+                <div class="env-front"></div>
+                @if (s.Unread > 0)
+                {
+                    <span class="env-badge">@(s.Unread > 99 ? "99+" : s.Unread.ToString())</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ İSTATİSTİK KARTLARI (DURUM sayıları, 11.2 Kavram 1) ============ -->
+    <div class="db-stats">
+        <a class="db-stat t-blue" asp-controller="Message" asp-action="Inbox">
+            <div class="top">
+                <span class="ic"><i class="bi bi-inbox"></i></span>
+                @if (s.InboxLast7 > 0) { <span class="trend">Son 7 gün +@s.InboxLast7</span> }
+            </div>
+            <div class="num">@s.InboxTotal</div>
+            <div class="lbl">Gelen Kutusu</div>
+            <div class="desc"><span>Kutunuzdaki mesajlar</span><i class="bi bi-arrow-right"></i></div>
+        </a>
+
+        <a class="db-stat t-lav" asp-controller="Message" asp-action="Sent">
+            <div class="top">
+                <span class="ic"><i class="bi bi-send"></i></span>
+                @if (s.SentLast7 > 0) { <span class="trend">Son 7 gün +@s.SentLast7</span> }
+            </div>
+            <div class="num">@s.SentTotal</div>
+            <div class="lbl">Gönderilenler</div>
+            <div class="desc"><span>Gönderdiğiniz mesajlar</span><i class="bi bi-arrow-right"></i></div>
+        </a>
+
+        <a class="db-stat t-peach" asp-controller="Message" asp-action="Inbox" asp-route-filter="Unread">
+            <div class="top">
+                <span class="ic"><i class="bi bi-envelope"></i></span>
+                @if (s.UnreadLast7 > 0) { <span class="trend">Son 7 gün +@s.UnreadLast7</span> }
+            </div>
+            <div class="num">@s.Unread</div>
+            <div class="lbl">Okunmamış</div>
+            <div class="desc"><span>Henüz açmadığınız mesajlar</span><i class="bi bi-arrow-right"></i></div>
+        </a>
+
+        @* Yıldızlanma ZAMANI tutulmadığı için "son 7 gün" yok (11.2, Kavram 4) *@
+        <a class="db-stat t-mint" asp-controller="Message" asp-action="Starred">
+            <div class="top">
+                <span class="ic"><i class="bi bi-star"></i></span>
+            </div>
+            <div class="num">@s.Starred</div>
+            <div class="lbl">Yıldızlı</div>
+            <div class="desc"><span>Önemli olarak işaretledikleriniz</span><i class="bi bi-arrow-right"></i></div>
+        </a>
+    </div>
+
+    <!-- ============ GRAFİKLER (11.4) ============ -->
+    <div class="db-row charts">
+
+        <!-- Mesaj trafiği: OLAY sayıları (11.2, Kavram 1) -->
+        <div class="db-card">
+            <div class="db-card-head">
+                <div>
+                    <h3>Mesaj Trafiği</h3>
+                    <p id="dbRangeText">Son 30 günde gelen ve gönderilen mesajlar</p>
+                </div>
+                <div class="db-seg" role="group" aria-label="Zaman aralığı">
+                    <button type="button" data-range="7">7 gün</button>
+                    <button type="button" data-range="30" class="active">30 gün</button>
+                </div>
+            </div>
+
+            @if (hasActivity)
+            {
+                @* Lejant aynı zamanda seriyi gizleyip gösteren düğme; renkler kartlarla aynı (Gelen mavi, Gönderilen mor) *@
+                <div class="db-legend">
+                    <button type="button" class="db-legend-item" data-series="0" aria-pressed="true">
+                        <span class="sw" style="background:#4A7CC2"></span> Gelen <b id="dbTotal0">0</b>
+                    </button>
+                    <button type="button" class="db-legend-item" data-series="1" aria-pressed="true">
+                        <span class="sw" style="background:#6F62C6"></span> Gönderilen <b id="dbTotal1">0</b>
+                    </button>
+                </div>
+                <div class="db-chart-box">
+                    <canvas id="dbLine" role="img" aria-label="Son günlerde gelen ve gönderilen mesaj sayıları"></canvas>
+                </div>
+            }
+            else
+            {
+                <div class="db-chart-box">
+                    <div class="db-chart-empty"><div><i class="bi bi-graph-up"></i>Son 30 günde mesaj trafiği yok.</div></div>
+                </div>
+            }
+        </div>
+
+        <!-- Kategori dağılımı: DURUM sayıları (karar 4-A) -->
+        <div class="db-card db-dist">
+            <div class="db-card-head">
+                <div>
+                    <h3>Kategoriler</h3>
+                    <p>Gelen ve gönderilen mesajlarınız (çöp ve taslak hariç)</p>
+                </div>
+            </div>
+
+            @if (Model.CategoryTotal == 0)
+            {
+                <div class="db-chart-empty" style="min-height:220px"><div><i class="bi bi-pie-chart"></i>Henüz kategorilere ayrılmış mesaj yok.</div></div>
+            }
+            else
+            {
+                <div class="db-dist-body">
+                    <div class="db-donut-box">
+                        <canvas id="dbDonut" role="img" aria-label="Mesajların kategorilere göre dağılımı"></canvas>
+                        <div class="db-donut-center"><div><b>@Model.CategoryTotal</b><span>mesaj</span></div></div>
+                    </div>
+                    @* Grafiğin metin karşılığı: ekran okuyucular ve renkleri ayırt edemeyenler için de okunur *@
+                    <ul class="db-dist-list">
+                        @for (int i = 0; i < slices.Count; i++)
+                        {
+                            <li>
+                                <span class="db-dot" style="background:@slices[i].Color"></span>
+                                <span>@slices[i].Name</span>
+                                <span class="c">@slices[i].Count</span>
+                                <span class="p">%@percents[i]</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- ============ ALT SATIR ============ -->
+    <div class="db-row bottom">
+
+        <!-- Son gelen mesajlar -->
+        <div class="db-card db-recent">
+            <div class="db-card-head">
+                <div>
+                    <h3>Son Gelen Mesajlar</h3>
+                    <p>Gelen kutunuzdaki en yeni @Model.Recent.Count mesaj</p>
+                </div>
+                <a class="db-link" asp-controller="Message" asp-action="Inbox">Tümü <i class="bi bi-arrow-right"></i></a>
+            </div>
+
+            @if (Model.Recent.Count == 0)
+            {
+                <div class="db-empty"><i class="bi bi-inbox"></i>Gelen kutunuz boş.</div>
+            }
+            else
+            {
+                <div class="db-msgs">
+                    @foreach (var m in Model.Recent)
+                    {
+                        <a class="db-msg @(m.IsRead ? "" : "unread")" asp-controller="Message" asp-action="Detail" asp-route-id="@m.MessageId">
+                            <partial name="_Avatar" model="new AvatarViewModel(m.SenderName, m.SenderEmail, m.SenderPhoto)" />
+                            <div class="bd">
+                                <div class="nm">
+                                    @m.SenderName
+                                    @if (m.CategoryName != null)
+                                    {
+                                        <span class="db-cat" style="background:color-mix(in srgb, @(m.CategoryColor) 14%, white);color:@(m.CategoryColor)">@m.CategoryName</span>
+                                    }
+                                </div>
+                                <div class="sj">@m.Subject</div>
+                                <div class="sn">@m.Snippet</div>
+                            </div>
+                            <span class="tm">@ShortTime(m.SentDate)</span>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- En çok yazışılan kişiler (OLAY sayıları: son 30 gün) -->
+        <div class="db-card">
+            <div class="db-card-head">
+                <div>
+                    <h3>Sık Yazıştıklarınız</h3>
+                    <p>Son 30 günde en çok mesajlaştığınız kişiler</p>
+                </div>
+            </div>
+
+            @if (Model.Contacts.Count == 0)
+            {
+                <div class="db-empty"><i class="bi bi-people"></i>Son 30 günde yazışma yok.</div>
+            }
+            else
+            {
+                foreach (var c in Model.Contacts)
+                {
+                    int percent = maxContact == 0 ? 0 : (int)Math.Round(c.Total * 100.0 / maxContact);
+                    <div class="db-contact">
+                        <partial name="_Avatar" model="new AvatarViewModel(c.Name, c.Email, c.Photo)" />
+                        <div class="bd">
+                            <div class="nm">@c.Name</div>
+                            <div class="em">@c.Email</div>
+                            <div class="bar" title="@c.Received gelen · @c.Sent giden"><span style="width:@(percent)%"></span></div>
+                        </div>
+                        <div class="cnt">@c.Total<small>mesaj</small></div>
+                        @* Alıcısı dolu Yeni Mesaj (11.3): sadece başlangıç değeri, doğrulama gönderimde *@
+                        <a class="db-send" asp-controller="Message" asp-action="CreateMessage" asp-route-to="@c.Email" title="@c.Name kişisine yaz">
+                            <i class="bi bi-send"></i>
+                        </a>
+                    </div>
+                }
+            }
+        </div>
+
+        <!-- Hızlı erişim -->
+        <div class="db-card">
+            <div class="db-card-head">
+                <div>
+                    <h3>Hızlı Erişim</h3>
+                    <p>Sık kullanılan sayfalar</p>
+                </div>
+            </div>
+            <div class="db-quick-grid">
+                <a class="db-tile t-lav" asp-controller="Message" asp-action="CreateMessage">
+                    <i class="bi bi-pencil-square"></i>
+                    <span>Yeni Mesaj<small>Bir e-posta yazın</small></span>
+                </a>
+                <a class="db-tile t-blue" asp-controller="Message" asp-action="Drafts">
+                    <i class="bi bi-file-earmark-text"></i>
+                    <span>Taslaklar<small>@s.Drafts taslak</small></span>
+                </a>
+                <a class="db-tile t-mint" asp-controller="Message" asp-action="Starred">
+                    <i class="bi bi-star"></i>
+                    <span>Yıldızlılar<small>@s.Starred mesaj</small></span>
+                </a>
+                <a class="db-tile t-peach" asp-controller="Profile" asp-action="Index">
+                    <i class="bi bi-person-circle"></i>
+                    <span>Profilim<small>Ad ve fotoğraf</small></span>
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    @* Chart.js: sürüm SABİT + SRI (Kavram 2). Bu dosya sadece bu sayfada yüklenir. *@
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@@4.6.1/dist/chart.umd.min.js"
+            integrity="sha384-Emf5ZVIUiarAdhkgtqK+5/Z5qIvM6QoVrS+qAVtfyZVuD5lIHrac0me485+Antp0"
+            crossorigin="anonymous"></script>
+
+    @* Veri KOD olarak değil VERİ olarak gömülür (Kavram 3): tarayıcı bu bloğu çalıştırmaz, JS JSON.parse ile okur *@
+    <script type="application/json" id="dbLineData">@Json.Serialize(chartData)</script>
+    <script type="application/json" id="dbDonutData">@Json.Serialize(donutData)</script>
+
+    <script>
+        (() => {
+            // CDN'e ulaşılamazsa (internet yok, SRI uyuşmazlığı) sayfanın geri kalanı yine çalışsın
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js yüklenemedi; grafikler gösterilmiyor.');
+                return;
+            }
+
+            Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+            Chart.defaults.color = '#85899B';
+
+            /* ---------- Çizgi grafik: 7/30 gün sayfaya gömülü veriden (karar 3-A) ---------- */
+            const lineCanvas = document.getElementById('dbLine');
+            if (lineCanvas) {
+                const all = JSON.parse(document.getElementById('dbLineData').textContent);
+                const COLORS = ['#4A7CC2', '#6F62C6'];
+
+                const lineChart = new Chart(lineCanvas, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            { label: 'Gelen', data: [], borderColor: COLORS[0], backgroundColor: COLORS[0] + '1F', fill: true },
+                            { label: 'Gönderilen', data: [], borderColor: COLORS[1], backgroundColor: COLORS[1] + '1F', fill: true }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,                      // yüksekliği .db-chart-box belirler
+                        interaction: { mode: 'index', intersect: false }, // fareyle bir güne gelince iki seri birden
+                        elements: {
+                            line: { tension: 0.35, borderWidth: 2.5 },
+                            point: { radius: 0, hoverRadius: 5 }
+                        },
+                        plugins: {
+                            legend: { display: false },                  // lejantı temanın düğmeleri gösteriyor
+                            tooltip: {
+                                callbacks: {
+                                    // Başlıkta tam tarih: "23 Kasım Pazartesi"
+                                    title: items => currentTitles[items[0].dataIndex]
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+                            y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#F1F0F8' } }   // mesaj sayısı tam sayıdır
+                        }
+                    }
+                });
+
+                let currentTitles = [];
+
+                function showRange(days) {
+                    // Dizinin SON n elemanı = son n gün (11.2: seri eskiden yeniye sıralı)
+                    const from = all.labels.length - days;
+                    lineChart.data.labels = all.labels.slice(from);
+                    lineChart.data.datasets[0].data = all.received.slice(from);
+                    lineChart.data.datasets[1].data = all.sent.slice(from);
+                    currentTitles = all.titles.slice(from);
+                    lineChart.update();
+
+                    const sum = arr => arr.reduce((a, b) => a + b, 0);
+                    document.getElementById('dbTotal0').textContent = sum(lineChart.data.datasets[0].data);
+                    document.getElementById('dbTotal1').textContent = sum(lineChart.data.datasets[1].data);
+                    document.getElementById('dbRangeText').textContent = `Son ${days} günde gelen ve gönderilen mesajlar`;
+
+                    document.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('active', Number(b.dataset.range) === days));
+                }
+
+                document.querySelectorAll('[data-range]').forEach(btn =>
+                    btn.addEventListener('click', () => showRange(Number(btn.dataset.range))));
+
+                // Lejant düğmeleri: seriyi gizle/göster
+                document.querySelectorAll('[data-series]').forEach(btn => btn.addEventListener('click', () => {
+                    const index = Number(btn.dataset.series);
+                    const visible = !lineChart.isDatasetVisible(index);
+                    lineChart.setDatasetVisibility(index, visible);
+                    lineChart.update();
+                    btn.classList.toggle('off', !visible);
+                    btn.setAttribute('aria-pressed', String(visible));
+                }));
+
+                showRange(30);
+            }
+
+            /* ---------- Halka grafik ---------- */
+            const donutCanvas = document.getElementById('dbDonut');
+            if (donutCanvas) {
+                const d = JSON.parse(document.getElementById('dbDonutData').textContent);
+                new Chart(donutCanvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: d.labels,
+                        datasets: [{ data: d.counts, backgroundColor: d.colors, borderColor: '#fff', borderWidth: 3, hoverOffset: 6 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '72%',                                   // ortadaki toplam yazısına yer
+                        plugins: { legend: { display: false } }          // liste yanında zaten var
+                    }
+                });
+            }
+        })();
+    </script>
+}
