@@ -4,6 +4,30 @@
         SHARED NAVBAR
         Kullanıcı bilgileri çerezdeki claim'lerden gelir (veritabanı sorgusu yok).
         ===================================================================== -->
+<style>
+    /* [hidden] özelliği, display'i belirleyen bir CSS kuralı varsa ezilir: garantiye al (12.6) */
+    .pip[hidden], .notif-desktop[hidden] {
+        display: none !important;
+    }
+
+    .notif-desktop {
+        width: 100%;
+        margin: 4px 0 6px;
+        border: 1px dashed var(--border);
+        background: var(--bg);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--accent-dark);
+        text-align: left;
+    }
+
+        .notif-desktop:hover {
+            border-color: var(--accent);
+        }
+</style>
+
 <header class="app-navbar">
     <button class="nav-toggle" id="sidebarToggle" type="button" aria-label="Menüyü daralt / genişlet" title="Menüyü daralt"><i class="bi bi-list"></i></button>
 
@@ -14,14 +38,14 @@
     </div>
 
     <div class="nav-actions">
-        <!-- Bildirimler: son 5 okunmamış mesaj -->
-        <div class="dropdown">
+        <!-- Bildirimler: son 5 okunmamış mesaj. Adresler mailora-notify.js içindir (12.6). -->
+        <div class="dropdown" id="notifBell"
+             data-check-url="@Url.Action("Check", "Notifications")"
+             data-menu-url="@Url.Action("Menu", "Notifications")">
             <button class="icon-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Bildirimler">
                 <i class="bi bi-bell"></i>
-                @if (Model.Notifications.Any())
-                {
-                    <span class="pip"></span>
-                }
+                @* Her zaman çizilir; görünürlüğü JS günceller (yeni mesaj geldiğinde ya da okundu yapıldığında) *@
+                <span class="pip" id="notifPip" hidden="@(!Model.Notifications.Any())"></span>
             </button>
             <div class="dropdown-menu dropdown-menu-end notif-menu">
                 <div class="d-flex justify-content-between align-items-center px-2 pt-1 pb-2">
@@ -29,23 +53,17 @@
                     <a asp-controller="Message" asp-action="Inbox" style="font-size:12.5px;font-weight:600;color:var(--accent)">Tümünü gör</a>
                 </div>
 
-                @if (!Model.Notifications.Any())
-                {
-                    <div class="px-2 pb-2" style="font-size:13px;color:var(--muted)">Okunmamış mesajınız yok.</div>
-                }
+                @* Masaüstü bildirimi izni: sadece izin HENÜZ sorulmadıysa JS gösterir (karar 3-B) *@
+                <button type="button" class="notif-desktop" id="notifDesktop" hidden>
+                    <i class="bi bi-bell"></i> Masaüstü bildirimlerini aç
+                </button>
 
-                @foreach (var n in Model.Notifications)
-                {
-                    <a class="notif-item" asp-controller="Message" asp-action="Detail" asp-route-id="@n.MessageId">
-                        <div class="ni av-lav"><i class="bi bi-envelope"></i></div>
-                        <div style="min-width:0">
-                            <div class="nt">@n.SenderDisplayName · @n.Subject</div>
-                            <div class="nd">@n.RelativeTime</div>
-                        </div>
-                    </a>
-                }
+                <div id="notifList">
+                    <partial name="_NotificationList" model="Model.Notifications" />
+                </div>
             </div>
         </div>
+
         <div class="dropdown">
             <button class="user-chip" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 <partial name="_Avatar" model='new AvatarViewModel(Model.FullName, Model.Email, Model.PhotoFile)' />

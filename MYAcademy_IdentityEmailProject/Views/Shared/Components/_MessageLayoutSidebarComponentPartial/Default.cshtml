@@ -3,7 +3,7 @@
       Linkler tag helper ile üretilir: hedef action henüz yoksa href boş kalır,
       action yazıldığında link kendiliğinden çalışır.
       ===================================================================== -->
-<aside class="app-sidebar" id="appSidebar" aria-label="Ana menü">
+<aside class="app-sidebar" id="appSidebar" aria-label="Ana menü" data-notify-cursor="@Model.Counts.LatestInboxItemId">
     <a class="brand" asp-controller="Home" asp-action="Index">
         <div class="brand-logo"><i class="bi bi-envelope-paper-heart-fill"></i></div>
         <div class="brand-name">Mail<span>ora</span></div>

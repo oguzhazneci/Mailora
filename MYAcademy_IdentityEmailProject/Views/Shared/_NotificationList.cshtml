@@ -1,0 +1,20 @@
+﻿@model List<NotificationItemViewModel>
+@* Zil menüsünün LİSTE kısmı (12.6). İki yerden çizilir:
+   1) Navbar ilk yüklemede  2) NotificationsController.Menu, menü yenilenirken.
+   Tek şablon → iki çizim hiçbir zaman birbirinden farklı görünmez. *@
+
+@if (Model.Count == 0)
+{
+    <div class="px-2 pb-2" style="font-size:13px;color:var(--muted)">Okunmamış mesajınız yok.</div>
+}
+
+@foreach (var n in Model)
+{
+    <a class="notif-item" asp-controller="Message" asp-action="Detail" asp-route-id="@n.MessageId">
+        <div class="ni av-lav"><i class="bi bi-envelope"></i></div>
+        <div style="min-width:0">
+            <div class="nt">@n.SenderDisplayName · @n.Subject</div>
+            <div class="nd">@n.RelativeTime</div>
+        </div>
+    </a>
+}

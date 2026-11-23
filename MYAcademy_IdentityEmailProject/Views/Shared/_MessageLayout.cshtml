@@ -210,7 +210,7 @@
                 requestAnimationFrame(() => requestAnimationFrame(() => body.classList.remove('preload')));
             })();
     </script>
-
+    <script src="~/js/mailora-notify.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

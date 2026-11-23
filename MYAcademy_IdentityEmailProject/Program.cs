@@ -46,6 +46,7 @@ builder.Services.AddDbContext<EmailContext>(options =>
 builder.Services.AddScoped<IMailService, MailService>();
 builder.Services.AddScoped<IMailboxCounter, MailboxCounter>();
 builder.Services.AddScoped<IDashboardQueries, DashboardQueries>();
+builder.Services.AddScoped<INotificationFeed, NotificationFeed>();
 
 // HTML temizleyici: izin listesindeki etiketleri bırakır, script ve olay özelliklerini siler.
 // Singleton: yapılandırması değiştirilmediği sürece bir örneğin paylaşılması güvenli.

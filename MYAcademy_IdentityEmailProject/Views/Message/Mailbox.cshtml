@@ -112,6 +112,30 @@
         font-weight: 600;
     }
 
+    /* "N yeni mesaj · Göster" çubuğu (12.6, karar 5-A). [hidden] + display kuralı çakışmasın diye ayrı kural */
+    .new-mail-bar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin: 0 0 10px;
+        padding: 9px 14px;
+        border-radius: 12px;
+        background: var(--lavender);
+        color: var(--accent-dark);
+        font-size: 13.5px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+        .new-mail-bar:hover {
+            filter: brightness(.97);
+        }
+
+        .new-mail-bar[hidden] {
+            display: none;
+        }
+
     /* Başlığın sağ tarafı: okunmamış rozeti + (Çöp Kutusu'nda) Çöpü Boşalt — 9.5 */
     .list-title-actions {
         display: flex;
@@ -269,6 +293,15 @@
         </div>
 
         <!-- Mesaj listesi: sadece bu sayfanın satırları sunucudan gelir -->
+        @if (Model.View == MailboxView.Inbox)
+        {
+            @* Yeni mesaj gelince liste kendiliğinden değişmez; bu çubuk haber verir (12.6).
+               Tıklayınca mevcut filtrelerle 1. sayfa açılır (en yeni mesajlar orada). *@
+            <a class="new-mail-bar" id="newMailBar" hidden asp-action="Inbox" asp-all-route-data="Model.RouteWith()">
+                <i class="bi bi-arrow-up-circle"></i> <span data-count>0</span> yeni mesaj · Göster
+            </a>
+        }
+
         <div class="msg-list" id="msgList">
             @foreach (var item in Model.Items)
             {
