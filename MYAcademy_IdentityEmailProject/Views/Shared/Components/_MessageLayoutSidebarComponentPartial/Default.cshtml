@@ -20,6 +20,7 @@
         <li><a class="side-link" data-page="sent" asp-controller="Message" asp-action="Sent" data-tip="Gönderilenler"><i class="bi bi-send"></i> <span class="lbl">Gönderilenler</span></a></li>
         <li><a class="side-link" data-page="drafts" asp-controller="Message" asp-action="Drafts" data-tip="Taslaklar"><i class="bi bi-file-earmark-text"></i> <span class="lbl">Taslaklar</span> <span class="side-badge muted" id="badgeDrafts">@(Model.Counts.Drafts > 0 ? Model.Counts.Drafts.ToString() : "")</span></a></li>
         <li><a class="side-link" data-page="starred" asp-controller="Message" asp-action="Starred" data-tip="Yıldızlı Mesajlar"><i class="bi bi-star"></i> <span class="lbl">Yıldızlı Mesajlar</span> <span class="side-badge muted" id="badgeStarred">@(Model.Counts.Starred > 0 ? Model.Counts.Starred.ToString() : "")</span></a></li>
+        <li><a class="side-link" data-page="archive" asp-controller="Message" asp-action="Archive" data-tip="Arşiv"><i class="bi bi-archive"></i> <span class="lbl">Arşiv</span></a></li>
         <li><a class="side-link" data-page="trash" asp-controller="Message" asp-action="Trash" data-tip="Çöp Kutusu"><i class="bi bi-trash3"></i> <span class="lbl">Çöp Kutusu</span> <span class="side-badge muted" id="badgeTrash">@(Model.Counts.Trash > 0 ? Model.Counts.Trash.ToString() : "")</span></a></li>
     </ul>
 

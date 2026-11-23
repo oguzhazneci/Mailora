@@ -198,6 +198,9 @@ namespace MYAcademy_IdentityEmailProject.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MailboxItemId"));
 
+                    b.Property<DateTime?>("ArchivedDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("DeletedDate")
                         .HasColumnType("datetime2");
 

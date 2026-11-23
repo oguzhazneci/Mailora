@@ -53,16 +53,18 @@ namespace MYAcademy_IdentityEmailProject.Services
                 .Where(i => i.UserId == userId)
                 // Önce düz sütunlara indir (Message.SentDate bir JOIN olur), sonra grupla:
                 // gruplanmış sayımlarda gezinme özelliği yerine düz sütun kullanmak çeviriyi garantiler.
-                .Select(i => new { i.UserId, i.Folder, i.IsRead, i.IsStarred, i.DeletedDate, i.Message.SentDate })
+                .Select(i => new { i.UserId, i.Folder, i.IsRead, i.IsStarred, i.DeletedDate, i.ArchivedDate, i.Message.SentDate })
                 .GroupBy(x => x.UserId)
                 .Select(g => new DashboardStats
                 {
-                    InboxTotal = g.Count(x => x.Folder == MailFolder.Inbox && x.DeletedDate == null),
-                    InboxLast7 = g.Count(x => x.Folder == MailFolder.Inbox && x.DeletedDate == null && x.SentDate >= weekStart),
+                    // "Gelen Kutusu" = gelen + çöpte değil + ARŞİVDE DEĞİL (12.2: durum sayısı)
+                    InboxTotal = g.Count(x => x.Folder == MailFolder.Inbox && x.DeletedDate == null && x.ArchivedDate == null),
+                    InboxLast7 = g.Count(x => x.Folder == MailFolder.Inbox && x.DeletedDate == null && x.ArchivedDate == null && x.SentDate >= weekStart),
                     SentTotal = g.Count(x => x.Folder == MailFolder.Sent && x.DeletedDate == null),
                     SentLast7 = g.Count(x => x.Folder == MailFolder.Sent && x.DeletedDate == null && x.SentDate >= weekStart),
-                    Unread = g.Count(x => x.Folder == MailFolder.Inbox && !x.IsRead && x.DeletedDate == null),
-                    UnreadLast7 = g.Count(x => x.Folder == MailFolder.Inbox && !x.IsRead && x.DeletedDate == null && x.SentDate >= weekStart),
+                    // Arşivdeki okunmamışlar sayılmaz (karar 3-A) — sidebar rozetiyle aynı koşul
+                    Unread = g.Count(x => x.Folder == MailFolder.Inbox && !x.IsRead && x.DeletedDate == null && x.ArchivedDate == null),
+                    UnreadLast7 = g.Count(x => x.Folder == MailFolder.Inbox && !x.IsRead && x.DeletedDate == null && x.ArchivedDate == null && x.SentDate >= weekStart),
                     Starred = g.Count(x => x.IsStarred && x.DeletedDate == null),
                     Drafts = g.Count(x => x.Folder == MailFolder.Draft && x.DeletedDate == null)
                 })
@@ -142,7 +144,7 @@ namespace MYAcademy_IdentityEmailProject.Services
         private async Task<List<RecentMessage>> GetRecentAsync(string userId)
         {
             var rows = await _context.MailboxItems
-                .Where(i => i.UserId == userId && i.Folder == MailFolder.Inbox && i.DeletedDate == null)
+                .Where(i => i.UserId == userId && i.Folder == MailFolder.Inbox && i.DeletedDate == null && i.ArchivedDate == null)
                 .OrderByDescending(i => i.Message.SentDate)
                 .ThenByDescending(i => i.MailboxItemId)
                 .Take(RecentCount)

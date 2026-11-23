@@ -48,7 +48,7 @@ namespace MYAcademy_IdentityEmailProject.ViewComponents.MessageLayoutViewCompone
             string userId = _userManager.GetUserId(user)!;
 
             var unread = await _context.MailboxItems
-                .Where(i => i.UserId == userId && i.Folder == MailFolder.Inbox && !i.IsRead && i.DeletedDate == null)
+                .Where(i => i.UserId == userId && i.Folder == MailFolder.Inbox && !i.IsRead && i.DeletedDate == null && i.ArchivedDate == null)
                 .OrderByDescending(i => i.Message.SentDate)
                 .Take(5)
                 .Select(i => new

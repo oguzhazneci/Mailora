@@ -237,6 +237,8 @@
              data-trash-url="@Url.Action("BulkMoveToTrash", "Message")"
              data-restore-url="@Url.Action("BulkRestore", "Message")"
              data-forever-url="@Url.Action("BulkDeleteForever", "Message")"
+             data-archive-url="@Url.Action("BulkArchive", "Message")"
+             data-unarchive-url="@Url.Action("BulkUnarchive", "Message")"
              data-counts-url="@Url.Action("ListCounts", "Message", new { view = Model.View })">
             <input type="checkbox" class="m-check" id="checkAll" aria-label="Bu sayfadakilerin tümünü seç" disabled="@(!Model.Items.Any())">
             <span class="sel-info" id="selInfo">Tümünü seç</span>
@@ -254,6 +256,14 @@
             }
             else
             {
+                @if (Model.CanArchive)
+                {
+                    <button type="button" class="tool-btn" data-bulk="archive" title="Arşivle" disabled><i class="bi bi-archive"></i></button>
+                }
+                @if (Model.IsArchive)
+                {
+                    <button type="button" class="tool-btn" data-bulk="unarchive" title="Gelen Kutusu'na taşı" disabled><i class="bi bi-inbox"></i></button>
+                }
                 <button type="button" class="tool-btn" data-bulk="trash" title="Çöp kutusuna taşı" disabled><i class="bi bi-trash3"></i></button>
             }
         </div>
@@ -458,6 +468,32 @@
                             }
                         });
                         // Sayfada satır kalmadıysa bir sonraki sayfanın mesajlarını getirmek için yenile.
+                        if (!rows().length) setTimeout(() => location.reload(), 5200);
+                    } else if (btn.dataset.bulk === 'archive') {
+                        // Gelen Kutusu → Arşiv (12.2). Geri alınabilir işlem: onay yok, toast'ta "Geri al"
+                        const result = await Mailora.post(bar.dataset.archiveUrl, { ids });
+                        ids.forEach(id => rowById(id)?.remove());
+                        refreshBar();
+                        Mailora.showToast(`${result.count} mesaj arşivlendi.`, 'bi-archive', {
+                            label: 'Geri al',
+                            onClick: async () => {
+                                await Mailora.post(bar.dataset.unarchiveUrl, { ids });
+                                location.reload();
+                            }
+                        });
+                        if (!rows().length) setTimeout(() => location.reload(), 5200);
+                    } else if (btn.dataset.bulk === 'unarchive') {
+                        // Arşiv → Gelen Kutusu
+                        const result = await Mailora.post(bar.dataset.unarchiveUrl, { ids });
+                        ids.forEach(id => rowById(id)?.remove());
+                        refreshBar();
+                        Mailora.showToast(`${result.count} mesaj Gelen Kutusu'na taşındı.`, 'bi-inbox', {
+                            label: 'Geri al',
+                            onClick: async () => {
+                                await Mailora.post(bar.dataset.archiveUrl, { ids });
+                                location.reload();
+                            }
+                        });
                         if (!rows().length) setTimeout(() => location.reload(), 5200);
                     } else if (btn.dataset.bulk === 'restore') {
                         // Çöp Kutusu → mesajlar geldikleri klasöre döner (Folder hiç değişmemişti)

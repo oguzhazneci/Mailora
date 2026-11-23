@@ -8,7 +8,8 @@
     ViewData["Title"] = string.IsNullOrWhiteSpace(msg.Subject) ? "(Konu yok)" : msg.Subject;
     // Menü ve Geri linki: mesajı hangi listeden açtıysak oraya (çöpteki kopya → Çöp Kutusu) — 9.7
     bool inTrash = Model.Item.DeletedDate != null;
-    ViewData["ActiveMenu"] = inTrash ? "trash" : Model.Item.Folder switch
+    bool inArchive = !inTrash && Model.Item.ArchivedDate != null;      // 12.2: arşiv bir durum, klasör değil
+    ViewData["ActiveMenu"] = inTrash ? "trash" : inArchive ? "archive" : Model.Item.Folder switch
     {
         MailFolder.Sent => "sent",
         MailFolder.Draft => "drafts",
@@ -23,13 +24,13 @@
     var sentDate = msg.SentDate ?? msg.UpdatedDate;
     var toList = string.Join(", ", msg.Recipients.Select(r => r.Email));
 
-    string folderName = inTrash ? "Çöp Kutusu" : Model.Item.Folder switch
+    string folderName = inTrash ? "Çöp Kutusu" : inArchive ? "Arşiv" : Model.Item.Folder switch
     {
         MailFolder.Inbox => "Gelen Kutusu",
         MailFolder.Sent => "Gönderilenler",
         _ => "Taslaklar"
     };
-    string backAction = inTrash ? "Trash" : Model.Item.Folder switch
+    string backAction = inTrash ? "Trash" : inArchive ? "Archive" : Model.Item.Folder switch
     {
         MailFolder.Sent => "Sent",
         MailFolder.Draft => "Drafts",
@@ -40,22 +41,6 @@
     bool canRespond = msg.SentDate != null;
 }
 
-<style>
-    /* Yanıt alıntısı (9.7): solda çizgi, soluk renk — kimin yazdığı bir bakışta anlaşılsın */
-    .pv-body blockquote {
-        margin: 6px 0 14px;
-        padding: 4px 0 4px 14px;
-        border-left: 3px solid var(--border);
-        color: var(--muted);
-    }
-
-        .pv-body blockquote blockquote {
-            border-left-color: #D9D4F5;
-        }
-    /* yanıtın yanıtı */
-</style>
-
-
 <div class="msg-page">
     <div class="mp-top">
         <a class="btn-soft mp-back" asp-controller="Message" asp-action="@backAction"><i class="bi bi-arrow-left"></i> Geri</a>
@@ -64,8 +49,17 @@
             <button type="button" class="btn-soft" id="markUnread"
                     data-id="@Model.Item.MailboxItemId"
                     data-url="@Url.Action("SetRead", "Message")"
-                    data-back="@Url.Action("Inbox", "Message")">
+                    data-back="@Url.Action(backAction, "Message")">
                 <i class="bi bi-envelope"></i> Okunmadı olarak işaretle
+            </button>
+
+            @* Arşivle / Gelen Kutusu'na taşı (12.2): toplu işlem endpoint'leri tek Id ile kullanılır *@
+            <button type="button" class="btn-soft" id="toggleArchive"
+                    data-id="@Model.Item.MailboxItemId"
+                    data-url="@Url.Action(inArchive ? "BulkUnarchive" : "BulkArchive", "Message")"
+                    data-back="@Url.Action(backAction, "Message")">
+                <i class="bi @(inArchive ? "bi-inbox" : "bi-archive")"></i>
+                @(inArchive ? "Gelen Kutusu'na taşı" : "Arşivle")
             </button>
         }
     </div>
@@ -137,13 +131,26 @@
 </div>
 @section Scripts {
     <script>
-        // Okunmadı işaretle → Gelen Kutusu'na dön.
+        // Okunmadı işaretle → mesajın geldiği listeye dön (Gelen Kutusu ya da Arşiv).
         // Sayfada kalsaydık, bir sonraki yenilemede detay sayfası mesajı tekrar "okundu" yapardı (7.5).
         document.getElementById('markUnread')?.addEventListener('click', async e => {
             const btn = e.currentTarget;
             btn.disabled = true;
             try {
                 await Mailora.post(btn.dataset.url, { id: btn.dataset.id, isRead: false });
+                location.href = btn.dataset.back;
+            } catch (err) {
+                btn.disabled = false;
+                if (err.message !== '401') Mailora.showToast('İşlem kaydedilemedi.', 'bi-exclamation-circle');
+            }
+        });
+
+        // Arşivle / Gelen Kutusu'na taşı → işlemden sonra mesajın açıldığı listeye dön (12.2)
+        document.getElementById('toggleArchive')?.addEventListener('click', async e => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            try {
+                await Mailora.post(btn.dataset.url, { ids: [btn.dataset.id] });
                 location.href = btn.dataset.back;
             } catch (err) {
                 btn.disabled = false;

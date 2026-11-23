@@ -54,6 +54,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
         public Task<IActionResult> Trash(MailboxQuery query) => ListAsync(MailboxView.Trash, query);
 
+        public Task<IActionResult> Archive(MailboxQuery query) => ListAsync(MailboxView.Archive, query);
+
         public Task<IActionResult> Drafts(MailboxQuery query) => ListAsync(MailboxView.Drafts, query);
 
         // Liste sayfasındaki çip sayıları: aynı kapsamla, sayfa yenilenmeden (7.8).
@@ -180,12 +182,14 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             // Görünüm koşulu (9.1'deki tablo). Diğer klasörler 9.3–9.6'da eklenecek.
             scoped = view switch
             {
-                MailboxView.Inbox => scoped.Where(i => i.Folder == MailFolder.Inbox && i.DeletedDate == null),
+                MailboxView.Inbox => scoped.Where(i => i.Folder == MailFolder.Inbox && i.DeletedDate == null && i.ArchivedDate == null),
                 MailboxView.Sent => scoped.Where(i => i.Folder == MailFolder.Sent && i.DeletedDate == null),
                 // Klasör değil özellik: karışık liste. Koşul sidebar sayacıyla AYNI (9.4, Kavram 2).
                 MailboxView.Starred => scoped.Where(i => i.IsStarred && i.DeletedDate == null),
                 // Çöp Kutusu bir klasör değil bir durum: her klasörden silinenler (9.1)
                 MailboxView.Trash => scoped.Where(i => i.DeletedDate != null),
+                // Arşiv: gelen + arşivlenmiş + çöpte değil. Folder hâlâ Inbox (12.1, Kavram 2)
+                MailboxView.Archive => scoped.Where(i => i.Folder == MailFolder.Inbox && i.ArchivedDate != null && i.DeletedDate == null),
                 MailboxView.Drafts => scoped.Where(i => i.Folder == MailFolder.Draft && i.DeletedDate == null),
                 _ => throw new NotSupportedException($"{view} görünümü henüz tanımlı değil.")
             };
@@ -382,6 +386,51 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             int count = await _context.MailboxItems
                 .Where(i => ids.Contains(i.MailboxItemId) && i.UserId == userId && i.DeletedDate != null)
                 .ExecuteUpdateAsync(s => s.SetProperty(i => i.DeletedDate, (DateTime?)null));
+
+            return Json(new { count, counts = await _counter.GetAsync(userId) });
+        }
+        // Arşivle (12.2): sadece gelen, arşivde olmayan, çöpte olmayan kopyalarım (karar 2-A, Kavram 2)
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BulkArchive(int[] ids)
+        {
+            if (ids.Length == 0 || ids.Length > BulkLimit)
+            {
+                return BadRequest();
+            }
+
+            string userId = _userManager.GetUserId(User)!;
+            var now = DateTime.Now;
+
+            int count = await _context.MailboxItems
+                .Where(i => ids.Contains(i.MailboxItemId)
+                         && i.UserId == userId
+                         && i.Folder == MailFolder.Inbox
+                         && i.ArchivedDate == null
+                         && i.DeletedDate == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.ArchivedDate, now));
+
+            return Json(new { count, counts = await _counter.GetAsync(userId) });
+        }
+
+        // Gelen Kutusu'na taşı (12.2)
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BulkUnarchive(int[] ids)
+        {
+            if (ids.Length == 0 || ids.Length > BulkLimit)
+            {
+                return BadRequest();
+            }
+
+            string userId = _userManager.GetUserId(User)!;
+
+            int count = await _context.MailboxItems
+                .Where(i => ids.Contains(i.MailboxItemId)
+                         && i.UserId == userId
+                         && i.ArchivedDate != null
+                         && i.DeletedDate == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.ArchivedDate, (DateTime?)null));
 
             return Json(new { count, counts = await _counter.GetAsync(userId) });
         }

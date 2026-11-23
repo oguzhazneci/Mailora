@@ -15,5 +15,7 @@
         public bool IsRead { get; set; }
         public bool IsStarred { get; set; }
         public DateTime? DeletedDate { get; set; }   // null = çöpte değil
+        // Arşivlendiği an; null = arşivde değil (12.1: arşiv bir durum, klasör değil — DeletedDate gibi)
+        public DateTime? ArchivedDate { get; set; }
     }
 }

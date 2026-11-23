@@ -36,12 +36,13 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Starred => "Yıldızlı Mesajlar",
             MailboxView.Trash => "Çöp Kutusu",
             MailboxView.Drafts => "Taslaklar",
+            MailboxView.Archive => "Arşiv",
             _ => View.ToString()
         };
 
         public string SearchPlaceholder => View switch
         {
-            MailboxView.Inbox => "Gönderen, konu veya içerik ara",
+            MailboxView.Inbox or MailboxView.Archive => "Gönderen, konu veya içerik ara",
             MailboxView.Sent or MailboxView.Drafts => "Alıcı, konu veya içerik ara",
             _ => "Kişi, konu veya içerik ara"
         };
@@ -53,6 +54,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Starred => "bi-star",
             MailboxView.Trash => "bi-trash3",
             MailboxView.Drafts => "bi-file-earmark-text",
+            MailboxView.Archive => "bi-archive",
             _ => "bi-inbox"
         };
 
@@ -63,6 +65,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Starred => "Yıldızlı mesajınız yok",
             MailboxView.Trash => "Çöp kutunuz boş",
             MailboxView.Drafts => "Taslağınız yok",
+            MailboxView.Archive => "Arşiviniz boş",
             _ => "Burada mesaj yok"
         };
 
@@ -72,6 +75,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Sent => "Gönderdiğiniz mesajlar burada listelenecek.",
             MailboxView.Starred => "Önemli mesajları yıldızlayın; hangi klasörde olurlarsa olsunlar burada toplanır.",
             MailboxView.Trash => "Silinen mesajlar siz kalıcı olarak silene kadar burada tutulur.",
+            MailboxView.Archive => "Gelen Kutusu'ndan arşivlediğiniz mesajlar burada saklanır.",
             MailboxView.Drafts => "Yeni Mesaj sayfasında \"Taslak Olarak Kaydet\" dediğiniz mesajlar burada listelenir.",
             _ => ""
         };
@@ -85,6 +89,10 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
 
         // Çöp Kutusu'na özel butonlar: geri al, kalıcı sil, çöpü boşalt (9.5)
         public bool IsTrash => View == MailboxView.Trash;
+
+        // Arşiv butonları (12.2): "Arşivle" sadece Gelen Kutusu'nda (karar 2-A), "Gelen Kutusu'na taşı" sadece Arşiv'de
+        public bool CanArchive => View == MailboxView.Inbox;
+        public bool IsArchive => View == MailboxView.Archive;
 
         // Linklerin ve GET formunun gideceği action (MessageController'daki metot adı)
         public string ActionName => View.ToString();

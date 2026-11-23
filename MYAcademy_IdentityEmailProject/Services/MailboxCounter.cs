@@ -24,7 +24,7 @@ namespace MYAcademy_IdentityEmailProject.Services
                 .GroupBy(i => i.UserId)
                 .Select(g => new MailboxCounts
                 {
-                    UnreadInbox = g.Count(i => i.Folder == MailFolder.Inbox && !i.IsRead && i.DeletedDate == null),
+                    UnreadInbox = g.Count(i => i.Folder == MailFolder.Inbox && !i.IsRead && i.DeletedDate == null && i.ArchivedDate == null),
                     Drafts = g.Count(i => i.Folder == MailFolder.Draft && i.DeletedDate == null),
                     Starred = g.Count(i => i.IsStarred && i.DeletedDate == null),
                     Trash = g.Count(i => i.DeletedDate != null)
