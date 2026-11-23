@@ -2,18 +2,18 @@
 
 namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
-    // Yeni Mesaj formu. Buradaki kurallar GÖNDERİM içindir (8.2).
-    // Taslak kaydında [Required]/[EmailAddress] devre dışı kalır; sınırlar ValidateDraft'ta (9.6).
+    // Yeni Mesaj formu. Alıcı alanları METİN: "a@x.com, b@y.com" (12.9).
+    // Alıcı kuralları (format, tekilleştirme, en fazla 20) attribute ile değil RecipientList ile denetlenir:
+    // üç alan BİRLİKTE değerlendirilmeli (toplam sayı, alanlar arası tekrar).
     public class CreateMessageViewModel
     {
-        // Düzenlenen taslağın MessageId'si; yeni mesajda null.
-        // İstemciden gelir: controller sahipliği ve hâlâ taslak olduğunu her seferinde kontrol eder.
+        // Düzenlenen taslağın MessageId'si; yeni mesajda null (9.6)
         public int? DraftId { get; set; }
 
-        [Required(ErrorMessage = "Alıcı adresi zorunludur.")]
-        [EmailAddress(ErrorMessage = "Geçerli bir e-posta adresi girin.")]
-        [StringLength(256, ErrorMessage = "E-posta adresi en fazla 256 karakter olabilir.")]
-        public string ReceiverEmail { get; set; } = string.Empty;
+        // Kaba bir üst sınır: 20 adres × 256 karakter + ayırıcılar. Asıl kurallar RecipientList'te.
+        [StringLength(6000)] public string? To { get; set; }
+        [StringLength(6000)] public string? Cc { get; set; }
+        [StringLength(6000)] public string? Bcc { get; set; }
 
         [Required(ErrorMessage = "Bir kategori seçin.")]
         public int? CategoryId { get; set; }

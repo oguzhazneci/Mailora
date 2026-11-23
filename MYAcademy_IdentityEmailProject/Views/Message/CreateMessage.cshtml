@@ -107,11 +107,37 @@
                 </div>
             </div>
 
-            <div class="cmp-row @ErrClass(nameof(Model.ReceiverEmail))" id="rowTo">
-                <label class="cmp-label" for="cmpTo">Kime</label>
-                <input asp-for="ReceiverEmail" id="cmpTo" class="cmp-subject" type="email"
-                       placeholder="ornek@alanadi.com" maxlength="256" spellcheck="false" autocomplete="email">
-                <div class="cmp-err">@ErrText(nameof(Model.ReceiverEmail))</div>
+            @* Alıcılar (12.9). Sunucu üç DÜZ METİN alanı çizer ("a@x.com, b@y.com"): JS kapalıyken de çalışır.
+               JS açılışta bunları kartlara (chip) çevirir; boş Bilgi/Gizli satırlarını gizler. *@
+            <div class="cmp-row @ErrClass(nameof(Model.To))" id="rowTo">
+                <label class="cmp-label" for="rfTo">Kime</label>
+                <div class="rf-box" data-rf="To">
+                    <input asp-for="To" id="rfTo" class="rf-input" type="text"
+                           placeholder="ad@alanadi.com · birden fazla adresi virgülle ayırın" spellcheck="false" autocomplete="off">
+                </div>
+                <div class="rf-toggles" id="rfToggles" hidden>
+                    <button type="button" data-rf-show="Cc" title="Bilgi (Cc) alıcısı ekle">Bilgi</button>
+                    <button type="button" data-rf-show="Bcc" title="Gizli (Bcc) alıcı ekle">Gizli</button>
+                </div>
+                <div class="cmp-err">@ErrText(nameof(Model.To))</div>
+            </div>
+
+            <div class="cmp-row @ErrClass(nameof(Model.Cc))" id="rowCc">
+                <label class="cmp-label" for="rfCc">Bilgi</label>
+                <div class="rf-box" data-rf="Cc">
+                    <input asp-for="Cc" id="rfCc" class="rf-input" type="text"
+                           placeholder="Herkesin göreceği bilgi alıcıları" spellcheck="false" autocomplete="off">
+                </div>
+                <div class="cmp-err">@ErrText(nameof(Model.Cc))</div>
+            </div>
+
+            <div class="cmp-row @ErrClass(nameof(Model.Bcc))" id="rowBcc">
+                <label class="cmp-label" for="rfBcc" title="Gizli alıcıları diğer alıcılar görmez">Gizli</label>
+                <div class="rf-box" data-rf="Bcc">
+                    <input asp-for="Bcc" id="rfBcc" class="rf-input" type="text"
+                           placeholder="Diğer alıcıların görmeyeceği adresler" spellcheck="false" autocomplete="off">
+                </div>
+                <div class="cmp-err">@ErrText(nameof(Model.Bcc))</div>
             </div>
 
             <div class="cmp-row @ErrClass(nameof(Model.CategoryId))" id="rowCategory">
@@ -240,11 +266,12 @@
             const EMAIL_RE = /^[^\s@@<>()[\],;:"]+@@[^\s@@<>()[\],;:"]+\.[a-z]{2,}$/i;
 
             // Sunucudaki kurallar ve mesajlar (CreateMessageViewModel) — iki tarafta aynı metin
-            const RULES = { emailMax: 256, subjectMax: 200, bodyMax: 100000 };
+            const RULES = { emailMax: 256, subjectMax: 200, bodyMax: 100000, maxRecipients: 20 };   // RecipientList ile aynı
             let savingDraft = false;   // durum metni: "Gönderiliyor…" mi "Kaydediliyor…" mu
             const MSG = {
-                toRequired: 'Alıcı adresi zorunludur.',
-                toInvalid: 'Geçerli bir e-posta adresi girin.',
+                toRequired: 'En az bir alıcı girin.',
+                toTooMany: n => `Bir mesaj en fazla 20 alıcıya gönderilebilir (şu an ${n}).`,
+                toInvalid: list => `Geçersiz adres: ${list.slice(0, 3).join(', ')}${list.length > 3 ? ` (+${list.length - 3})` : ''}`,
                 toTooLong: 'E-posta adresi en fazla 256 karakter olabilir.',
                 category: 'Bir kategori seçin.',
                 subjectRequired: 'Konu zorunludur.',
@@ -257,7 +284,7 @@
             const BLOCK_LABELS = { p: 'Paragraf', div: 'Paragraf', h1: 'Başlık 1', h2: 'Başlık 2', h3: 'Başlık 3', blockquote: 'Alıntı' };
 
             const form = $('#cmpForm'), editor = $('#cmpEditor'), content = $('#cmpContent');
-            const to = $('#cmpTo'), category = $('#cmpCategory'), subject = $('#cmpSubject');
+            const category = $('#cmpCategory'), subject = $('#cmpSubject');
             let savedRange = null, dirty = false, sending = false;
 
             const textOf = html => { const d = document.createElement('div'); d.innerHTML = html || ''; return (d.textContent || '').trim(); };
@@ -266,7 +293,7 @@
             /* --- Durum göstergesi --- */
             function updateStatus() {
                 const el = $('#cmpStatus');
-                const empty = !to.value.trim() && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
+                const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
                 const state = sending ? 'saving' : empty ? 'empty' : 'dirty';
                 el.dataset.state = state;
                 $('.stext', el).textContent = { empty: 'Yeni mesaj', dirty: 'Gönderilmedi', saving: savingDraft ? 'Kaydediliyor…' : 'Gönderiliyor…' }[state];
@@ -390,14 +417,125 @@
             document.addEventListener('selectionchange', () => { saveSelection(); updateToolbarState(); });
             document.addEventListener('mousedown', e => { if (!e.target.closest('.tb-wrap')) closePops(); });
 
-            /* --- Alıcı / Kategori / Konu --- */
-            to.addEventListener('input', () => { clearFieldError($('#rowTo')); markDirty(); });
-            to.addEventListener('blur', () => {
-                const v = to.value.trim();
-                to.value = v;
-                if (v && !EMAIL_RE.test(v)) setFieldError($('#rowTo'), MSG.toInvalid);
+            /* --- Alıcı alanları (12.9): metin → kartlar ---
+               Gerçek değer, formdaki GİZLİ alanda virgülle birleşmiş metin olarak durur.
+               Kurallar sunucudaki RecipientList ile aynı: büyük/küçük harf farksız tekilleştirme,
+               öncelik Kime > Bilgi > Gizli, en fazla 20 alıcı. */
+            const PRIORITY = { To: 0, Cc: 1, Bcc: 2 };
+            const FIELD_LABEL = { To: 'Kime', Cc: 'Bilgi', Bcc: 'Gizli' };
+            const fields = {};
+
+            const recipientCount = () => Object.values(fields).reduce((n, f) => n + f.chips.length, 0);
+            const findChip = email => {
+                for (const f of Object.values(fields)) {
+                    const chip = f.chips.find(c => c.email.toLowerCase() === email.toLowerCase());
+                    if (chip) return { field: f, chip };
+                }
+                return null;
+            };
+
+            function createRecipientField(name) {
+                const box = $(`[data-rf="${name}"]`);
+                const input = $('.rf-input', box);
+                const row = box.closest('.cmp-row');
+
+                // Formun gerçek alanı: gizli input. Görünen input'tan "name" kaldırılır (çift gönderim olmasın).
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = name;
+                form.appendChild(hidden);
+                input.removeAttribute('name');
+
+                const field = { name, row, input, chips: [] };
+                const sync = () => { hidden.value = field.chips.map(c => c.email).join(', '); };
+
+                field.add = (raw, silent = false) => {
+                    raw.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean).forEach(email => {
+                        const existing = findChip(email);
+                        if (existing) {
+                            // Aynı adres zaten var: daha ÖNCELİKLİ alandaysa dokunma; değilse buraya taşı
+                            if (PRIORITY[existing.field.name] <= PRIORITY[name]) {
+                                if (!silent) showToast(`${email} zaten ${FIELD_LABEL[existing.field.name]} alanında.`, 'bi-info-circle');
+                                return;
+                            }
+                            existing.field.remove(existing.chip, true);
+                        }
+
+                        const valid = EMAIL_RE.test(email) && email.length <= RULES.emailMax;
+                        const el = document.createElement('span');
+                        el.className = 'rf-chip' + (valid ? '' : ' invalid');
+                        el.title = valid ? email : 'Geçersiz adres: düzeltmek için kaldırıp yeniden yazın';
+
+                        const text = document.createElement('span');
+                        text.className = 't';
+                        text.textContent = email;                       // kullanıcı verisi: textContent, innerHTML değil
+
+                        const x = document.createElement('button');
+                        x.type = 'button';
+                        x.className = 'x';
+                        x.setAttribute('aria-label', `${email} adresini kaldır`);
+                        x.innerHTML = '<i class="bi bi-x"></i>';
+
+                        const chip = { email, el };
+                        x.addEventListener('click', () => { field.remove(chip); input.focus(); });
+                        el.append(text, x);
+                        box.insertBefore(el, input);
+                        field.chips.push(chip);
+                    });
+                    sync();
+                    if (!silent) { clearFieldError(row); markDirty(); }
+                };
+
+                field.remove = (chip, silent = false) => {
+                    field.chips.splice(field.chips.indexOf(chip), 1);
+                    chip.el.remove();
+                    sync();
+                    if (!silent) markDirty();
+                };
+
+                field.clear = () => { field.chips.splice(0).forEach(c => c.el.remove()); input.value = ''; sync(); };
+
+                // Yazılmakta olan adresi karta çevir (gönderimden önce, odaktan çıkınca)
+                field.commit = () => { if (input.value.trim()) { field.add(input.value); input.value = ''; } };
+
+                input.addEventListener('keydown', e => {
+                    const separator = e.key === ',' || e.key === ';' || e.key === ' ' || (e.key === 'Enter' && !e.ctrlKey && !e.metaKey);
+                    if (separator && input.value.trim()) { e.preventDefault(); field.commit(); return; }
+                    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); category.focus(); return; }   // boş alanda Enter → sonraki alan
+                    if (e.key === 'Backspace' && !input.value && field.chips.length) field.remove(field.chips[field.chips.length - 1]);
+                });
+                input.addEventListener('blur', field.commit);
+                input.addEventListener('paste', e => {
+                    const pasted = e.clipboardData.getData('text');
+                    if (/[,;\s]/.test(pasted)) { e.preventDefault(); field.add(input.value + pasted); input.value = ''; }
+                });
+                input.addEventListener('input', () => { clearFieldError(row); markDirty(); });
+                box.addEventListener('click', e => { if (e.target === box) input.focus(); });
+
+                // Başlangıç: sunucunun yazdığı metni kartlara çevir (taslak, yanıt, hata sonrası geri dönüş)
+                const initial = input.value;
+                input.value = '';
+                field.add(initial, true);
+                return field;
+            }
+
+            ['To', 'Cc', 'Bcc'].forEach(name => { fields[name] = createRecipientField(name); });
+
+            // Bilgi / Gizli satırları: boşsa (ve hata yoksa) gizle, "Bilgi" / "Gizli" düğmeleriyle aç
+            const toggles = $('#rfToggles');
+            toggles.hidden = false;
+            ['Cc', 'Bcc'].forEach(name => {
+                const f = fields[name];
+                const button = $(`[data-rf-show="${name}"]`, toggles);
+                const inUse = f.chips.length > 0 || f.row.classList.contains('has-error');
+                f.row.hidden = !inUse;
+                button.classList.toggle('used', inUse);
+                button.addEventListener('click', () => {
+                    f.row.hidden = false;
+                    button.classList.add('used');
+                    f.input.focus();
+                });
             });
-            to.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); category.focus(); } });
 
             const syncCategory = () => $('#cmpCategoryWrap').classList.toggle('has-value', !!category.value);
             category.addEventListener('change', () => { syncCategory(); clearFieldError($('#rowCategory')); markDirty(); });
@@ -409,13 +547,19 @@
             function validate() {
                 let first = null;
                 const fail = (row, msg, el) => { setFieldError(row, msg); if (!first) first = el; };
-                const email = to.value.trim();
-
                 const subj = subject.value.trim();
 
-                if (!email) fail($('#rowTo'), MSG.toRequired, to);
-                else if (email.length > RULES.emailMax) fail($('#rowTo'), MSG.toTooLong, to);
-                else if (!EMAIL_RE.test(email)) fail($('#rowTo'), MSG.toInvalid, to);
+                // Alıcılar: sunucudaki ValidateRecipients ile aynı kurallar ve metinler
+                const total = recipientCount();
+                if (total === 0) fail(fields.To.row, MSG.toRequired, fields.To.input);
+                else if (total > RULES.maxRecipients) fail(fields.To.row, MSG.toTooMany(total), fields.To.input);
+                Object.values(fields).forEach(f => {
+                    const bad = f.chips.map(c => c.email).filter(e => !EMAIL_RE.test(e) || e.length > RULES.emailMax);
+                    if (bad.length) {
+                        f.row.hidden = false;
+                        fail(f.row, MSG.toInvalid(bad), f.input);
+                    }
+                });
 
                 if (!category.value) fail($('#rowCategory'), MSG.category, category);
 
@@ -434,10 +578,13 @@
             function validateDraft() {
                 let first = null;
                 const fail = (row, msg, el) => { setFieldError(row, msg); if (!first) first = el; };
-                const empty = !to.value.trim() && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
+                const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
 
                 if (empty) { showToast(MSG.draftEmpty, 'bi-info-circle'); return false; }
-                if (to.value.trim().length > RULES.emailMax) fail($('#rowTo'), MSG.toTooLong, to);
+                if (recipientCount() > RULES.maxRecipients) fail(fields.To.row, MSG.toTooMany(recipientCount()), fields.To.input);
+                Object.values(fields).forEach(f => {
+                    if (f.chips.some(c => c.email.length > RULES.emailMax)) fail(f.row, MSG.toTooLong, f.input);
+                });
                 if (subject.value.trim().length > RULES.subjectMax) fail($('#rowSubject'), MSG.subjectTooLong, subject);
                 if (content.value.length > RULES.bodyMax) fail($('#rowBody'), MSG.bodyTooLong, editor);
 
@@ -447,7 +594,7 @@
 
             form.addEventListener('submit', e => {
                 closePops();
-                to.value = to.value.trim();
+                Object.values(fields).forEach(f => f.commit());     // yarım kalan adres de kart olsun
                 syncContent();
                 if (sending) { e.preventDefault(); return; }
 
@@ -474,7 +621,7 @@
             /* --- Temizle (onaylı) --- */
             const dialog = $('#cmpDialog');
             const openClear = () => {
-                const empty = !to.value.trim() && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
+                const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
                 if (empty) { showToast('Form zaten boş.', 'bi-info-circle'); return; }
                 dialog.hidden = false;
                 $('[data-dialog="cancel"]', dialog).focus();
@@ -485,13 +632,14 @@
             dialog.addEventListener('click', e => {
                 const act = e.target.closest('[data-dialog]')?.dataset.dialog;
                 if (act === 'ok') {
-                    to.value = ''; category.value = ''; subject.value = ''; editor.innerHTML = '';
+                    Object.values(fields).forEach(f => { f.clear(); clearFieldError(f.row); });
+                    category.value = ''; subject.value = ''; editor.innerHTML = '';
                     syncContent(); syncCategory(); updateCounter();
-                    ['#rowTo', '#rowCategory', '#rowSubject', '#rowBody'].forEach(s => clearFieldError($(s)));
+                    ['#rowCategory', '#rowSubject', '#rowBody'].forEach(s => clearFieldError($(s)));
                     dirty = false; savedRange = null;
                     closeClear(); updateStatus();
                     showToast('Form temizlendi.', 'bi-eraser');
-                    to.focus();
+                    fields.To.input.focus();
                 } else if (act === 'cancel' || e.target === dialog) closeClear();
             });
 
@@ -518,7 +666,7 @@
             // İlk hatalı alana ya da boş alana odaklan
             const firstErr = $('#compose .has-error input, #compose .has-error select, #compose .has-error .cmp-editor');
             if (firstErr) firstErr.focus();
-            else if (window.innerWidth >= 768) (!to.value ? to : !category.value ? category : !subject.value ? subject : editor).focus();
+            else if (window.innerWidth >= 768) (recipientCount() === 0 ? fields.To.input : !category.value ? category : !subject.value ? subject : editor).focus();
         })();
     </script>
 }

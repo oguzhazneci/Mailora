@@ -492,12 +492,13 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         /* =====================================================================
-           YENİ MESAJ ve TASLAKLAR (8.2 – 8.4, 9.6)
-           Tek form, iki niyet: "send" → tam doğrulama + gönderim, "draft" → gevşek doğrulama + kayıt.
-           ===================================================================== */
+                   YENİ MESAJ ve TASLAKLAR (8.2 – 8.4, 9.6, 9.7, 12.9)
+                   Tek form, iki niyet: "send" → tam doğrulama + gönderim, "draft" → gevşek doğrulama + kayıt.
+                   Alıcılar: Kime / Bilgi / Gizli metinleri → RecipientList (ayrıştır + tekilleştir).
+                   ===================================================================== */
 
         [HttpGet]
-        public async Task<IActionResult> CreateMessage(int? draftId, int? replyTo, int? forwardOf, string? to)
+        public async Task<IActionResult> CreateMessage(int? draftId, int? replyTo, int? forwardOf, string? to, bool replyAll = false)
         {
             var model = new CreateMessageViewModel();
 
@@ -510,21 +511,23 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 }
 
                 model.DraftId = draft.MessageId;
-                model.ReceiverEmail = draft.Recipients.FirstOrDefault()?.Email ?? string.Empty;
+                // Taslaktaki alıcı satırları türlerine göre üç alana dağıtılır (12.9)
+                model.To = RecipientList.Join(draft.Recipients.Where(r => r.RecipientType == RecipientType.To).Select(r => r.Email));
+                model.Cc = RecipientList.Join(draft.Recipients.Where(r => r.RecipientType == RecipientType.Cc).Select(r => r.Email));
+                model.Bcc = RecipientList.Join(draft.Recipients.Where(r => r.RecipientType == RecipientType.Bcc).Select(r => r.Email));
                 model.CategoryId = draft.CategoryId;
                 model.Subject = draft.Subject;
                 model.Body = _sanitizer.Sanitize(draft.Body);   // çıktıda da temizle (8.2, derinlemesine savunma)
             }
             else if (replyTo.HasValue || forwardOf.HasValue)
             {
-                // Yanıtla / İlet = önceden doldurulmuş yeni mesaj (Kavram 1)
+                // Yanıtla / İlet = önceden doldurulmuş yeni mesaj (9.7). Tümünü Yanıtla 12.12'de.
                 bool isReply = replyTo.HasValue;
                 int sourceId = replyTo ?? forwardOf!.Value;
 
                 var mine = await FindMyCopyAsync(sourceId);
                 if (mine == null)
                 {
-                    // Detail ile aynı kural (7.5): mesaj hiç yok → 404, başkasının → 403
                     bool exists = await _context.Messages.AnyAsync(m => m.MessageId == sourceId);
                     return exists ? Forbid() : NotFound();
                 }
@@ -532,33 +535,38 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 var source = mine.Message;
                 if (source.SentDate == null)
                 {
-                    return NotFound();   // taslağa yanıt verilmez, taslak iletilmez
+                    return NotFound();
                 }
 
                 model.CategoryId = source.CategoryId;
                 model.Subject = WithPrefix(isReply ? "Re:" : "Fwd:", source.Subject);
 
+                string heading = "İlet";
                 if (isReply)
                 {
-                    // Gelen kopyada gönderene, gönderilen kopyada alıcıya (Kavram 2)
-                    model.ReceiverEmail = mine.Folder == MailFolder.Inbox
-                        ? source.Sender.Email ?? string.Empty
-                        : source.Recipients.OrderBy(r => r.RecipientType).Select(r => r.Email).FirstOrDefault() ?? string.Empty;
+                    // 12.12: hedefler tek kuraldan. Gizli liste asla girmez, bakan kişi çıkarılır,
+                    // Gizli alıcıda replyAll yok sayılır (karar 4-A). mine = benim kopyam → mine.UserId = bakan kişi.
+                    var rv = RecipientView.For(source, mine.UserId);
+                    var targets = rv.GetReplyTargets(source.Sender.Email, replyAll);
+
+                    model.To = RecipientList.Join(targets.To);
+                    model.Cc = RecipientList.Join(targets.Cc);
+                    heading = replyAll && !rv.ViewerIsBcc ? "Tümünü Yanıtla" : "Yanıtla";
                 }
 
                 model.Body = isReply ? BuildReplyQuote(source) : BuildForwardBlock(source);
-                ViewData["ComposeHeading"] = isReply ? "Yanıtla" : "İlet";
+                ViewData["ComposeHeading"] = heading;
             }
-
-            else if (!string.IsNullOrWhiteSpace(to) && to.Length <= 256)
+            else if (!string.IsNullOrWhiteSpace(to) && to.Length <= RecipientList.MaxAddressLength)
             {
-                // Dashboard'daki "yaz" butonu (11.3): sadece başlangıç değeri, doğrulama gönderimde (8.2)
-                model.ReceiverEmail = to.Trim();
+                // Genel Bakış'taki "yaz" butonu (11.3): sadece başlangıç değeri, doğrulama gönderimde
+                model.To = to.Trim();
             }
 
             await LoadCategoriesAsync();
             return View(model);
         }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CreateMessage(CreateMessageViewModel model, string? intent)
@@ -566,15 +574,22 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             bool isDraft = intent == "draft";
             string safeBody = _sanitizer.Sanitize(model.Body ?? string.Empty);
 
+            // Üç alan BİRLİKTE ayrıştırılır: toplam sayı ve alanlar arası tekrar ancak böyle görülür
+            var recipients = RecipientList.Parse(model.To, model.Cc, model.Bcc);
+
             if (isDraft)
             {
-                // Taslak eksik olabilir: [Required]/[EmailAddress] hatalarını at, kendi kurallarımızı uygula (Kavram 2)
+                // Taslak eksik olabilir: [Required] hatalarını at, kendi kurallarımızı uygula (9.6)
                 ModelState.Clear();
-                ValidateDraft(model, safeBody);
+                ValidateDraft(model, safeBody, recipients);
             }
-            else if (!string.IsNullOrEmpty(model.Body) && !HasVisibleText(safeBody))
+            else
             {
-                ModelState.AddModelError(nameof(model.Body), "Mesaj içeriği boş olamaz.");
+                ValidateRecipients(recipients);
+                if (!string.IsNullOrEmpty(model.Body) && !HasVisibleText(safeBody))
+                {
+                    ModelState.AddModelError(nameof(model.Body), "Mesaj içeriği boş olamaz.");
+                }
             }
 
             if (model.CategoryId.HasValue && !await _context.Categories.AnyAsync(c => c.CategoryId == model.CategoryId))
@@ -582,7 +597,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 ModelState.AddModelError(nameof(model.CategoryId), "Seçilen kategori bulunamadı.");
             }
 
-            // DraftId istemciden gelir: benim mi, hâlâ taslak mı? (Kavram 4)
+            // DraftId istemciden gelir: benim mi, hâlâ taslak mı? (9.6, Kavram 4)
             Message? draft = null;
             if (model.DraftId.HasValue)
             {
@@ -595,18 +610,22 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
             if (!ModelState.IsValid)
             {
+                // Formu TEKİLLEŞTİRİLMİŞ haliyle geri doldur: kullanıcı neyin gönderileceğini görsün
+                model.To = RecipientList.Join(recipients.To);
+                model.Cc = RecipientList.Join(recipients.Cc);
+                model.Bcc = RecipientList.Join(recipients.Bcc);
                 model.Body = safeBody;
                 await LoadCategoriesAsync();
                 return View(model);
             }
 
             return isDraft
-                ? await SaveDraftAsync(model, safeBody, draft)
-                : await SendMessageAsync(model, safeBody, draft);
+                ? await SaveDraftAsync(model, safeBody, draft, recipients)
+                : await SendMessageAsync(model, safeBody, draft, recipients);
         }
 
         // Taslağı kaydet: yeni ya da mevcut taslağı güncelle
-        private async Task<IActionResult> SaveDraftAsync(CreateMessageViewModel model, string safeBody, Message? draft)
+        private async Task<IActionResult> SaveDraftAsync(CreateMessageViewModel model, string safeBody, Message? draft, RecipientList recipients)
         {
             string userId = _userManager.GetUserId(User)!;
             var now = DateTime.Now;
@@ -623,12 +642,11 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             draft.CategoryId = model.CategoryId;
             draft.UpdatedDate = now;
 
-            // Taslakta alıcı sadece yazılan adrestir; kayıtlı kullanıcıyla eşleştirme GÖNDERİMDE (Kavram 6)
-            draft.Recipients.Clear();                    // eski alıcı satırı listeden çıkar → SaveChanges'ta DELETE
-            string? to = model.ReceiverEmail?.Trim();
-            if (!string.IsNullOrEmpty(to))
+            // Taslakta alıcılar sadece yazılan adreslerdir (türleriyle). Kayıtlı kullanıcıyla eşleştirme GÖNDERİMDE (9.6).
+            draft.Recipients.Clear();
+            foreach (var (email, type) in recipients.All)
             {
-                draft.Recipients.Add(new MessageRecipient { Email = to, UserId = null, RecipientType = RecipientType.To });
+                draft.Recipients.Add(new MessageRecipient { Email = email, UserId = null, RecipientType = type });
             }
 
             await _context.SaveChangesAsync();
@@ -636,17 +654,23 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             TempData["Toast"] = "Taslak kaydedildi.";
             TempData["ToastIcon"] = "bi-file-earmark-check";
 
-            // PRG: düzenleme adresine dön. Sonraki "Kaydet" artık AYNI taslağı günceller (Kavram 3).
+            // PRG: düzenleme adresine dön. Sonraki "Kaydet" AYNI taslağı günceller (9.6).
             return RedirectToAction("CreateMessage", new { draftId = draft.MessageId });
         }
 
-        // Gönder: yeni mesaj ya da taslaktan gönderim (karar 4-A: aynı satır)
-        private async Task<IActionResult> SendMessageAsync(CreateMessageViewModel model, string safeBody, Message? draft)
+        // Gönder: yeni mesaj ya da taslaktan gönderim (karar 4-A: aynı satır) — çok alıcılı (12.10)
+        private async Task<IActionResult> SendMessageAsync(CreateMessageViewModel model, string safeBody, Message? draft, RecipientList recipients)
         {
             string senderId = _userManager.GetUserId(User)!;
-            string receiverEmail = model.ReceiverEmail.Trim();
-            var receiver = await _userManager.FindByEmailAsync(receiverEmail);
             var now = DateTime.Now;
+
+            // 1) Kayıtlı alıcılar TEK sorguda (Kavram 1). FindByEmailAsync döngüsü 20 sorgu olurdu (N+1).
+            //    Identity e-postaları NormalizedEmail sütununda büyük harfle tutar; aynı normalleştirmeyle ararız.
+            var normalized = recipients.All.Select(r => _userManager.NormalizeEmail(r.Email)).ToList();
+            var registered = await _userManager.Users
+                .Where(u => normalized.Contains(u.NormalizedEmail!))          // SQL: WHERE NormalizedEmail IN (...)
+                .Select(u => new { u.Id, u.Email, u.NormalizedEmail, u.Name, u.Surname })
+                .ToDictionaryAsync(u => u.NormalizedEmail!);
 
             Message message;
             if (draft == null)
@@ -657,7 +681,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             }
             else
             {
-                // Taslak → gönderilmiş mesaj: Id aynı, gönderenin kopyası Draft'tan Sent'e geçer
+                // Taslak → gönderilmiş mesaj: Id aynı, gönderenin kopyası Draft'tan Sent'e geçer (9.6)
                 message = draft;
                 message.MailboxItems.Single(i => i.UserId == senderId && i.Folder == MailFolder.Draft).Folder = MailFolder.Sent;
                 message.Recipients.Clear();
@@ -669,36 +693,61 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             message.UpdatedDate = now;
             message.SentDate = now;
 
-            message.Recipients.Add(new MessageRecipient
-            {
-                Email = receiver?.Email ?? receiverEmail,
-                UserId = receiver?.Id,
-                RecipientType = RecipientType.To
-            });
+            // 2) Her alıcı için bir alıcı satırı (türüyle); her KAYITLI alıcı için bir Gelen kopyası.
+            //    RecipientList zaten tekilleştirdi (12.9): aynı kullanıcıya iki kopya oluşamaz (benzersiz indeks, 5.3).
+            var external = new List<string>();
+            var internalNames = new List<string>();
 
-            if (receiver != null)
+            foreach (var (email, type) in recipients.All)
             {
-                message.MailboxItems.Add(new MailboxItem { UserId = receiver.Id, Folder = MailFolder.Inbox, IsRead = false });
+                if (registered.TryGetValue(_userManager.NormalizeEmail(email), out var user))
+                {
+                    message.Recipients.Add(new MessageRecipient { Email = user.Email!, UserId = user.Id, RecipientType = type });
+                    message.MailboxItems.Add(new MailboxItem { UserId = user.Id, Folder = MailFolder.Inbox, IsRead = false });
+
+                    string fullName = $"{user.Name} {user.Surname}".Trim();
+                    internalNames.Add(fullName.Length > 0 ? fullName : user.Email!);
+                }
+                else
+                {
+                    message.Recipients.Add(new MessageRecipient { Email = email, UserId = null, RecipientType = type });
+                    external.Add(email);
+                }
             }
 
             // Hepsi tek SaveChanges = tek transaction (5.4)
             await _context.SaveChangesAsync();
 
-            // Kayıt tamam. Geri alınamayan işlem (dış mail) EN SONDA (8.1). Toast alıcıyı açıkça söyler (8.4).
-            if (receiver != null)
+            // 3) Dış alıcılar: kayıttan SONRA, tek SMTP mailiyle (8.1: geri alınamaz işlem en sonda; karar 5-A)
+            bool externalOk = external.Count == 0 || await TrySendExternalAsync(message, recipients, external);
+
+            // 4) Toast: kime gittiğini açıkça söyler (8.4). Tek alıcıda eski, ayrıntılı metin.
+            if (recipients.Count == 1)
             {
-                string receiverName = $"{receiver.Name} {receiver.Surname}".Trim();
-                TempData["Toast"] = $"Mesajınız gönderildi · Alıcı: {(receiverName.Length > 0 ? receiverName : receiver.Email)} (Mailora)";
-            }
-            else if (await TrySendExternalAsync(message, receiverEmail))
-            {
-                TempData["Toast"] = $"Mesajınız e-posta olarak gönderildi · Alıcı: {receiverEmail} (Mailora dışı)";
-                TempData["ToastIcon"] = "bi-envelope-arrow-up";
+                TempData["Toast"] = internalNames.Count == 1
+                    ? $"Mesajınız gönderildi · Alıcı: {internalNames[0]} (Mailora)"
+                    : externalOk
+                        ? $"Mesajınız e-posta olarak gönderildi · Alıcı: {external[0]} (Mailora dışı)"
+                        : $"Mesajınız kaydedildi ancak {external[0]} adresine iletilemedi.";
             }
             else
             {
-                TempData["Toast"] = $"Mesajınız kaydedildi ancak {receiverEmail} adresine iletilemedi.";
+                var parts = new List<string>();
+                if (internalNames.Count > 0) parts.Add($"{internalNames.Count} Mailora");
+                if (external.Count > 0) parts.Add($"{external.Count} e-posta");
+
+                TempData["Toast"] = externalOk
+                    ? $"Mesajınız {recipients.Count} alıcıya gönderildi ({string.Join(", ", parts)})."
+                    : $"Mesajınız Mailora alıcılarına iletildi ancak {external.Count} dış adrese gönderilemedi.";
+            }
+
+            if (!externalOk)
+            {
                 TempData["ToastIcon"] = "bi-exclamation-triangle";
+            }
+            else if (external.Count > 0)
+            {
+                TempData["ToastIcon"] = "bi-envelope-arrow-up";
             }
 
             // Post-Redirect-Get: gönderilen mesajın detayı
@@ -712,7 +761,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
             return _context.Messages
                 .Include(m => m.Recipients)
-                .Include(m => m.MailboxItems.Where(i => i.UserId == userId))   // filtreli Include: sadece benim kopyam
+                .Include(m => m.MailboxItems.Where(i => i.UserId == userId))
                 .FirstOrDefaultAsync(m =>
                     m.MessageId == messageId &&
                     m.SenderId == userId &&
@@ -720,7 +769,6 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                     m.MailboxItems.Any(i => i.UserId == userId && i.Folder == MailFolder.Draft && i.DeletedDate == null));
         }
 
-        // Eski sekmede açık kalmış ya da başkasına ait bir taslak (Kavram 5)
         private IActionResult DraftGone()
         {
             TempData["Toast"] = "Bu taslak artık düzenlenemiyor: gönderilmiş ya da silinmiş olabilir.";
@@ -728,22 +776,57 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return RedirectToAction("Drafts");
         }
 
-        // Taslak kuralları: eksik olabilir ama boş olamaz ve sınırları aşamaz (Kavram 2)
-        private void ValidateDraft(CreateMessageViewModel model, string safeBody)
+        // GÖNDERİM kuralları (12.9): en az 1, en fazla 20 alıcı; her adres geçerli.
+        // Hata, sorunun olduğu ALANA yazılır; geçersiz adresler tek tek listelenir.
+        private void ValidateRecipients(RecipientList recipients)
         {
-            // Boş bırakılan alanlar model binding'de null gelir (string.Empty varsayılanı ezilir): ?. şart
-            string to = model.ReceiverEmail?.Trim() ?? string.Empty;
+            if (recipients.Count == 0)
+            {
+                ModelState.AddModelError(nameof(CreateMessageViewModel.To), "En az bir alıcı girin.");
+                return;
+            }
+
+            if (recipients.Count > RecipientList.MaxRecipients)
+            {
+                ModelState.AddModelError(nameof(CreateMessageViewModel.To),
+                    $"Bir mesaj en fazla {RecipientList.MaxRecipients} alıcıya gönderilebilir (şu an {recipients.Count}).");
+            }
+
+            AddInvalid(nameof(CreateMessageViewModel.To), recipients.To);
+            AddInvalid(nameof(CreateMessageViewModel.Cc), recipients.Cc);
+            AddInvalid(nameof(CreateMessageViewModel.Bcc), recipients.Bcc);
+
+            void AddInvalid(string field, List<string> addresses)
+            {
+                var invalid = addresses.Where(a => !RecipientList.IsValidAddress(a)).ToList();
+                if (invalid.Count > 0)
+                {
+                    string shown = string.Join(", ", invalid.Take(3)) + (invalid.Count > 3 ? $" (+{invalid.Count - 3})" : "");
+                    ModelState.AddModelError(field, $"Geçersiz adres: {shown}");
+                }
+            }
+        }
+
+        // TASLAK kuralları: eksik olabilir ama boş olamaz ve sınırları aşamaz (9.6, 12.9)
+        private void ValidateDraft(CreateMessageViewModel model, string safeBody, RecipientList recipients)
+        {
             string subject = model.Subject?.Trim() ?? string.Empty;
 
-            bool hasAnything = to.Length > 0 || model.CategoryId.HasValue || subject.Length > 0 || HasVisibleText(safeBody);
+            bool hasAnything = recipients.Count > 0 || model.CategoryId.HasValue || subject.Length > 0 || HasVisibleText(safeBody);
             if (!hasAnything)
             {
                 ModelState.AddModelError(string.Empty, "Boş bir taslak kaydedilemez.");
             }
 
-            if (to.Length > 256)
+            if (recipients.Count > RecipientList.MaxRecipients)
             {
-                ModelState.AddModelError(nameof(model.ReceiverEmail), "E-posta adresi en fazla 256 karakter olabilir.");
+                ModelState.AddModelError(nameof(model.To), $"En fazla {RecipientList.MaxRecipients} alıcı yazılabilir.");
+            }
+
+            // Taslakta format serbest (yarım yazılmış adres olabilir), ama veritabanı sütun sınırı geçerli
+            if (recipients.All.Any(r => r.Email.Length > RecipientList.MaxAddressLength))
+            {
+                ModelState.AddModelError(nameof(model.To), "E-posta adresi en fazla 256 karakter olabilir.");
             }
 
             if (subject.Length > 200)
@@ -756,7 +839,6 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 ModelState.AddModelError(nameof(model.Body), "Mesaj içeriği çok uzun.");
             }
         }
-
         /* ---------- Yanıtla / İlet yardımcıları (9.7) ---------- */
 
         // Mesajın BENİM kopyası (Gelen kopya öncelikli; kendine gönderilen mesajda iki kopya olabilir). Detail ile aynı kural.
@@ -803,23 +885,33 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         // İlet: orijinal mesajın künyesi + gövdesi
+        // 12.11: künyeyi İLETİLEN KİŞİLER okur → dışarıdan bakan görünümü (Gizli yok, "siz" yok)
         private string BuildForwardBlock(Message source)
         {
             string when = (source.SentDate ?? source.UpdatedDate).ToString("d MMMM yyyy dddd HH:mm", Tr);
             string name = WebUtility.HtmlEncode(PersonName(source.Sender));
             string email = WebUtility.HtmlEncode(source.Sender.Email ?? string.Empty);
             string subject = WebUtility.HtmlEncode(source.Subject);
-            string to = WebUtility.HtmlEncode(string.Join(", ", source.Recipients.Select(r => r.Email)));
+
+            var rv = RecipientView.ForOutsider(source);
+            static string Emails(IEnumerable<VisibleRecipient> list) =>
+                WebUtility.HtmlEncode(string.Join(", ", list.Select(r => r.Email)));
+
+            var lines = new List<string>
+            {
+                $"<b>Kimden:</b> {name} &lt;{email}&gt;",
+                $"<b>Tarih:</b> {when}",
+                $"<b>Konu:</b> {subject}"
+            };
+            if (rv.To.Count > 0) lines.Add($"<b>Kime:</b> {Emails(rv.To)}");
+            if (rv.Cc.Count > 0) lines.Add($"<b>Bilgi:</b> {Emails(rv.Cc)}");
+            if (rv.To.Count == 0 && rv.Cc.Count == 0) lines.Add("<b>Kime:</b> açıklanmayan alıcılar");
 
             return "<p><br></p>" +
                    "<p>---------- İletilen mesaj ----------<br>" +
-                   $"<b>Kimden:</b> {name} &lt;{email}&gt;<br>" +
-                   $"<b>Tarih:</b> {when}<br>" +
-                   $"<b>Konu:</b> {subject}<br>" +
-                   $"<b>Kime:</b> {to}</p>" +
+                   string.Join("<br>", lines) + "</p>" +
                    _sanitizer.Sanitize(source.Body);
         }
-
         private async Task LoadCategoriesAsync()
         {
             var categories = await _context.Categories.OrderBy(c => c.CategoryId).ToListAsync();
@@ -832,13 +924,13 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             string text = WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]+>", " "));
             return !string.IsNullOrWhiteSpace(text);
         }
-        // Dış adrese gerçek e-posta. Başarısızlık kaydı geri almaz; sadece false döner (8.1, 3. karar).
-        private async Task<bool> TrySendExternalAsync(Message message, string toEmail)
+        // Dış alıcılara TEK SMTP maili (12.10). Başlıkta Kime/Bilgi listeleri TAM, Gizli YOK; zarfta sadece dış adresler.
+        // Başarısızlık kaydı geri almaz; sadece false döner (8.1).
+        private async Task<bool> TrySendExternalAsync(Message message, RecipientList recipients, List<string> externalEnvelope)
         {
             string senderName = SenderDisplayName();
             string? senderEmail = User.FindFirstValue(ClaimTypes.Email);
 
-            // Mesajın kendisi zaten temizlenmiş HTML; altına kaynağı belirten bir not eklenir.
             string html = message.Body +
                 "<hr style=\"border:none;border-top:1px solid #ddd;margin:24px 0 12px\">" +
                 "<p style=\"color:#888;font-size:12px\">Bu e-posta <b>" + WebUtility.HtmlEncode(senderName) +
@@ -846,15 +938,22 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
             try
             {
-                await _mailService.SendAsync(toEmail, message.Subject, html, isHtml: true,
+                await _mailService.SendToManyAsync(
+                    headerTo: recipients.To,
+                    headerCc: recipients.Cc,
+                    envelopeRecipients: externalEnvelope,
+                    subject: message.Subject,
+                    body: html,
+                    isHtml: true,
                     fromName: $"{senderName} (Mailora)",
                     replyToEmail: senderEmail);
                 return true;
             }
             catch (Exception ex)
             {
-                // Loga kişisel veri (alıcı adresi) değil, sadece Id yazılır (Kavram 3).
-                _logger.LogError(ex, "Dış adrese gönderim başarısız. MessageId: {MessageId}", message.MessageId);
+                // Loga kişisel veri (alıcı adresleri) değil, sadece Id ve sayı (8.4)
+                _logger.LogError(ex, "Dış adreslere gönderim başarısız. MessageId: {MessageId}, Alıcı sayısı: {Count}",
+                                 message.MessageId, externalEnvelope.Count);
                 return false;
             }
         }

@@ -22,8 +22,11 @@
     if (senderName.Length == 0) senderName = sender.Email ?? "Bilinmeyen gönderen";
 
     var sentDate = msg.SentDate ?? msg.UpdatedDate;
-    var toList = string.Join(", ", msg.Recipients.Select(r => r.Email));
 
+    // 12.11: alıcılar BAKAN KİŞİYE göre süzülür. Item benim kopyam olduğu için Item.UserId = bakan kişi.
+    var rv = RecipientView.For(msg, Model.Item.UserId);
+    static string JoinRecipients(IEnumerable<VisibleRecipient> list) =>
+        string.Join(", ", list.Select(r => r.IsMe ? $"{r.Email} (siz)" : r.Email));
     string folderName = inTrash ? "Çöp Kutusu" : inArchive ? "Arşiv" : Model.Item.Folder switch
     {
         MailFolder.Inbox => "Gelen Kutusu",
@@ -83,51 +86,78 @@
                 <div class="who">
                     <div class="nm">@senderName</div>
                     <div class="em">@sender.Email</div>
-                    <div class="to">Kime: <b>@toList</b></div>
+                    @if (rv.To.Count > 0)
+                    {
+                        <div class="to">Kime: <b>@JoinRecipients(rv.To)</b></div>
+                    }
+                    else if (rv.Cc.Count == 0)
+                    {
+                        <div class="to">Kime: <b>@(rv.Count == 0 ? "Alıcı yok" : "açıklanmayan alıcılar")</b></div>
+                    }
+                    @if (rv.Cc.Count > 0)
+                    {
+                        <div class="to">Bilgi: <b>@JoinRecipients(rv.Cc)</b></div>
+                    }
+                    @if (rv.Bcc.Count > 0)
+                    {
+                        <div class="to" title="@(rv.ViewerIsSender
+                                ? "Gizli alıcıları yalnızca siz görüyorsunuz"
+                                : "Bu mesajın gizli alıcısısınız; diğer alıcılar sizi görmüyor")">
+                            Gizli: <b>@JoinRecipients(rv.Bcc)</b>
+                        </div>
+                    }
                 </div>
-                <div class="dt">
-                    <b>@(sentDate.ToString("d MMMM yyyy", tr))</b>
-                    @(sentDate.ToString("dddd HH:mm", tr))
-                </div>
+            <div class="dt">
+                <b>@(sentDate.ToString("d MMMM yyyy", tr))</b>
+                @(sentDate.ToString("dddd HH:mm", tr))
             </div>
+        </div>
 
-            @* Temizlenmiş HTML: biçimlendirme kalır, script ve olay özellikleri silinmiştir (Kavram 5). *@
-            <div class="pv-body">@Html.Raw(Model.SafeBodyHtml)</div>
+        @* Temizlenmiş HTML: biçimlendirme kalır, script ve olay özellikleri silinmiştir (Kavram 5). *@
+        <div class="pv-body">@Html.Raw(Model.SafeBodyHtml)</div>
 
-            @* Yanıtla / İlet = önceden doldurulmuş Yeni Mesaj sayfası (9.7, Kavram 1) *@
-            @if (canRespond)
+        @* Yanıtla / İlet = önceden doldurulmuş Yeni Mesaj sayfası (9.7, Kavram 1) *@
+        @if (canRespond)
             {
                 <div class="pv-actions">
                     <a class="btn-soft" asp-controller="Message" asp-action="CreateMessage" asp-route-replyTo="@msg.MessageId">
                         <i class="bi bi-reply"></i> Yanıtla
                     </a>
+                    @* Gizli alıcıya ve tek kişilik yazışmaya gösterilmez (12.12, karar 4-A) *@
+                    @if (rv.CanReplyAll(sender.Email))
+                    {
+                        <a class="btn-soft" asp-controller="Message" asp-action="CreateMessage"
+                           asp-route-replyTo="@msg.MessageId" asp-route-replyAll="true">
+                            <i class="bi bi-reply-all"></i> Tümünü Yanıtla
+                        </a>
+                    }
                     <a class="btn-soft" asp-controller="Message" asp-action="CreateMessage" asp-route-forwardOf="@msg.MessageId">
                         <i class="bi bi-forward"></i> İlet
                     </a>
                 </div>
-            }
-        </article>
+        }
+    </article>
 
-        <aside class="mp-side">
-            <div class="mp-side-card">
-                <h6>Mesaj Bilgileri</h6>
-                <ul class="mp-facts" style="margin-top:0;padding-top:0;border-top:0">
-                    <li>
-                        <span class="k"><i class="bi bi-tag"></i> Kategori</span>
-                        <span class="v">@(msg.Category?.CategoryName ?? "—")</span>
-                    </li>
-                    <li>
-                        <span class="k"><i class="bi bi-folder2"></i> Klasör</span>
-                        <span class="v">@folderName</span>
-                    </li>
-                    <li>
-                        <span class="k"><i class="bi bi-people"></i> Alıcı sayısı</span>
-                        <span class="v">@msg.Recipients.Count</span>
-                    </li>
-                </ul>
-            </div>
-        </aside>
-    </div>
+    <aside class="mp-side">
+        <div class="mp-side-card">
+            <h6>Mesaj Bilgileri</h6>
+            <ul class="mp-facts" style="margin-top:0;padding-top:0;border-top:0">
+                <li>
+                    <span class="k"><i class="bi bi-tag"></i> Kategori</span>
+                    <span class="v">@(msg.Category?.CategoryName ?? "—")</span>
+                </li>
+                <li>
+                    <span class="k"><i class="bi bi-folder2"></i> Klasör</span>
+                    <span class="v">@folderName</span>
+                </li>
+                <li>
+                    <span class="k"><i class="bi bi-people"></i> Alıcı sayısı</span>
+                    <span class="v">@rv.Count</span>
+                </li>
+            </ul>
+        </div>
+    </aside>
+</div>
 </div>
 @section Scripts {
     <script>
