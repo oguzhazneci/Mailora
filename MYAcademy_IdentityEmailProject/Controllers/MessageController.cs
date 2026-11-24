@@ -28,10 +28,12 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         private readonly IMailboxCounter _counter;
         private readonly IMailService _mailService;
         private readonly ILogger<MessageController> _logger;
+        private readonly IAttachmentStorage _attachmentStorage;
 
         public MessageController(EmailContext context, UserManager<AppUser> userManager,
                                  IHtmlSanitizer sanitizer, IMailboxCounter counter,
-                                 IMailService mailService, ILogger<MessageController> logger)
+                                 IMailService mailService, ILogger<MessageController> logger,
+                                   IAttachmentStorage attachmentStorage)
         {
             _context = context;
             _userManager = userManager;
@@ -39,6 +41,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             _counter = counter;
             _mailService = mailService;
             _logger = logger;
+            _attachmentStorage = attachmentStorage;
         }
         /* =====================================================================
         MESAJ LİSTELERİ (7.2 – 7.4, ortak motor 9.2)
@@ -152,6 +155,14 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 }
             }
 
+            // Hangi satırların eki var? Sayfa başına TEK sorgu (12.17, Kavram 1). Sadece MessageId'ler gelir.
+            var pageMessageIds = pageItems.Select(i => i.MessageId).Distinct().ToList();
+            var withAttachments = (await _context.Attachments
+                .Where(a => pageMessageIds.Contains(a.MessageId))          // SQL: WHERE MessageId IN (...)
+                .Select(a => a.MessageId)
+                .Distinct()
+                .ToListAsync()).ToHashSet();
+
             var model = new MailboxViewModel
             {
                 View = view,
@@ -166,7 +177,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 TotalItems = totalItems,
                 PageSize = PageSize,
                 UserNames = userNames,
-                UserPhotos = userPhotos
+                UserPhotos = userPhotos,
+                MessagesWithAttachments = withAttachments
             };
 
             // Tüm klasörler aynı view dosyasını kullanır (9.1, karar 1-B)
@@ -272,7 +284,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return View(new MessageDetailViewModel
             {
                 Item = item,
-                SafeBodyHtml = _sanitizer.Sanitize(item.Message.Body)
+                SafeBodyHtml = _sanitizer.Sanitize(item.Message.Body),
+                Attachments = await LoadAttachmentsAsync(item.MessageId)   // 12.17 (12.16.b'deki yardımcı)
             });
         }
 
@@ -518,10 +531,11 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 model.CategoryId = draft.CategoryId;
                 model.Subject = draft.Subject;
                 model.Body = _sanitizer.Sanitize(draft.Body);   // çıktıda da temizle (8.2, derinlemesine savunma)
+                model.Attachments = await LoadAttachmentsAsync(draft.MessageId);   // 12.16
             }
             else if (replyTo.HasValue || forwardOf.HasValue)
             {
-                // Yanıtla / İlet = önceden doldurulmuş yeni mesaj (9.7). Tümünü Yanıtla 12.12'de.
+                // Yanıtla / Tümünü Yanıtla / İlet = önceden doldurulmuş yeni mesaj (9.7, 12.12)
                 bool isReply = replyTo.HasValue;
                 int sourceId = replyTo ?? forwardOf!.Value;
 
@@ -577,11 +591,25 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             // Üç alan BİRLİKTE ayrıştırılır: toplam sayı ve alanlar arası tekrar ancak böyle görülür
             var recipients = RecipientList.Parse(model.To, model.Cc, model.Bcc);
 
+            // DraftId istemciden gelir: benim mi, hâlâ taslak mı? (9.6, Kavram 4)
+            // 12.16: doğrulamadan ÖNCE bulunur; taslağın ekleri doğrulamayı etkiler (Kavram 2)
+            Message? draft = null;
+            bool hasAttachments = false;
+            if (model.DraftId.HasValue)
+            {
+                draft = await FindMyDraftAsync(model.DraftId.Value);
+                if (draft == null)
+                {
+                    return DraftGone();
+                }
+                hasAttachments = await _context.Attachments.AnyAsync(a => a.MessageId == draft.MessageId);
+            }
+
             if (isDraft)
             {
                 // Taslak eksik olabilir: [Required] hatalarını at, kendi kurallarımızı uygula (9.6)
                 ModelState.Clear();
-                ValidateDraft(model, safeBody, recipients);
+                ValidateDraft(model, safeBody, recipients, hasAttachments);
             }
             else
             {
@@ -597,17 +625,6 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 ModelState.AddModelError(nameof(model.CategoryId), "Seçilen kategori bulunamadı.");
             }
 
-            // DraftId istemciden gelir: benim mi, hâlâ taslak mı? (9.6, Kavram 4)
-            Message? draft = null;
-            if (model.DraftId.HasValue)
-            {
-                draft = await FindMyDraftAsync(model.DraftId.Value);
-                if (draft == null)
-                {
-                    return DraftGone();
-                }
-            }
-
             if (!ModelState.IsValid)
             {
                 // Formu TEKİLLEŞTİRİLMİŞ haliyle geri doldur: kullanıcı neyin gönderileceğini görsün
@@ -615,6 +632,13 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 model.Cc = RecipientList.Join(recipients.Cc);
                 model.Bcc = RecipientList.Join(recipients.Bcc);
                 model.Body = safeBody;
+
+                // Ekler doğrulama hatasında kaybolmaz: taslaktan yeniden okunur (12.14 Kavram 3)
+                if (draft != null)
+                {
+                    model.Attachments = await LoadAttachmentsAsync(draft.MessageId);
+                }
+
                 await LoadCategoriesAsync();
                 return View(model);
             }
@@ -754,6 +778,168 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return RedirectToAction("Detail", new { id = message.MessageId });
         }
 
+        /* =====================================================================
+   EKLER: YÜKLEME ve KALDIRMA (12.16)
+   Dosya seçildiği anda yüklenir ve bir TASLAĞA bağlanır (karar 2-A).
+   Taslak yoksa boş bir taslak oluşturulur; istemci dönen draftId'yi formdaki gizli alana yazar.
+   ===================================================================== */
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        // Büyük istek controller'a gelmeden reddedilir (413). Pay: form alanları ve multipart sınırları için 1 MB.
+        [RequestSizeLimit(AttachmentRules.MaxFileBytes + 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = AttachmentRules.MaxFileBytes + 1024 * 1024)]
+        public async Task<IActionResult> UploadAttachment(int? draftId, IFormFile? file)
+        {
+            string userId = _userManager.GetUserId(User)!;
+            var now = DateTime.Now;
+
+            // 1) Taslak: varsa SAHİPLİĞİ yeniden doğrulanır (formdaki draftId de istemci girdisidir, 9.6)
+            Message draft;
+            long[] existingSizes;
+            if (draftId.HasValue)
+            {
+                var found = await FindMyDraftAsync(draftId.Value);
+                if (found == null)
+                {
+                    return AttachmentError("Bu taslak artık düzenlenemiyor: gönderilmiş ya da silinmiş olabilir.",
+                                           StatusCodes.Status404NotFound);
+                }
+                draft = found;
+
+                // En fazla 10 satır: boyutları çekip sayıyı ve toplamı bellekte hesaplamak tek sorgu
+                existingSizes = await _context.Attachments
+                    .Where(a => a.MessageId == draft.MessageId)
+                    .Select(a => a.SizeBytes)
+                    .ToArrayAsync();
+            }
+            else
+            {
+                draft = new Message { SenderId = userId, CreatedDate = now, SentDate = null };   // boş taslak (Kavram 1)
+                draft.MailboxItems.Add(new MailboxItem { UserId = userId, Folder = MailFolder.Draft, IsRead = true });
+                _context.Messages.Add(draft);
+                existingSizes = [];
+            }
+
+            // 2) Mesaj başı sınırlar: mevcut eklere bakmayı gerektirdiği için servis değil controller kontrol eder
+            if (existingSizes.Length >= AttachmentRules.MaxFiles)
+            {
+                return AttachmentError($"Bir mesaja en fazla {AttachmentRules.MaxFiles} dosya eklenebilir.");
+            }
+            if (file != null && existingSizes.Sum() + file.Length > AttachmentRules.MaxTotalBytes)
+            {
+                return AttachmentError($"Eklerin toplam boyutu en fazla {AttachmentRules.MaxTotalBytes / (1024 * 1024)} MB olabilir.");
+            }
+
+            // 3) Dosya kuralları ve diske yazma (boyut, izin listesi, imza → 12.15.c)
+            var result = await _attachmentStorage.SaveAsync(file, now, HttpContext.RequestAborted);
+            if (!result.Succeeded)
+            {
+                return AttachmentError(result.Error!);
+            }
+
+            // 4) Sıralama (Kavram 4): dosya yazıldı → veritabanı. Kayıt başarısızsa dosya geri alınır.
+            var attachment = result.Attachment!;
+            draft.Attachments.Add(attachment);
+            draft.UpdatedDate = now;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch
+            {
+                _attachmentStorage.Delete(attachment.StoredName);
+                throw;
+            }
+
+            return Json(new
+            {
+                draftId = draft.MessageId,
+                attachment = new
+                {
+                    id = attachment.AttachmentId,
+                    name = attachment.FileName,
+                    size = attachment.SizeBytes
+                }
+            });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> RemoveAttachment(int id)
+        {
+            string userId = _userManager.GetUserId(User)!;
+
+            // Sadece KENDİ, hâlâ düzenlenebilir TASLAĞIMIN eki kaldırılabilir. Gönderilmiş mesajın eki değişmez.
+            // Koşullar FindMyDraftAsync ile aynı dört şart: benim, gönderilmemiş, Taslak klasöründe, çöpte değil.
+            var attachment = await _context.Attachments.FirstOrDefaultAsync(a =>
+                a.AttachmentId == id &&
+                a.Message.SenderId == userId &&
+                a.Message.SentDate == null &&
+                a.Message.MailboxItems.Any(i => i.UserId == userId && i.Folder == MailFolder.Draft && i.DeletedDate == null));
+
+            if (attachment == null)
+            {
+                return AttachmentError("Ek bulunamadı ya da artık kaldırılamıyor.", StatusCodes.Status404NotFound);
+            }
+
+            // Sıralama (Kavram 4): önce satır, sonra dosya
+            _context.Attachments.Remove(attachment);
+            await _context.SaveChangesAsync();
+            _attachmentStorage.Delete(attachment.StoredName);
+
+            return Json(new { ok = true });
+        }
+
+        // Eki indir (12.17). Adres: /Message/DownloadAttachment/{id}
+        // Yetki: bu mesajın bende bir kopyası var mı? (Kavram 1, IDOR'a karşı). Çöp ve arşiv dahil.
+        [HttpGet]
+        public async Task<IActionResult> DownloadAttachment(int id)
+        {
+            string userId = _userManager.GetUserId(User)!;
+
+            // Sahiplik koşulu SORGUNUN İÇİNDE. Sadece gereken üç alan çekilir.
+            var attachment = await _context.Attachments
+                .Where(a => a.AttachmentId == id && a.Message.MailboxItems.Any(i => i.UserId == userId))
+                .Select(a => new { a.AttachmentId, a.FileName, a.StoredName, a.ContentType })
+                .FirstOrDefaultAsync();
+
+            // Yok ya da benim değil: ikisi de 404. 403 "var ama senin değil" bilgisini sızdırırdı (Kavram 2).
+            if (attachment == null)
+            {
+                return NotFound();
+            }
+
+            // Satır var ama dosya yok: disk ile veritabanı tutarsız. Kullanıcıya 404, bize log.
+            string? path = _attachmentStorage.GetPath(attachment.StoredName);
+            if (path == null)
+            {
+                _logger.LogWarning("Ek dosyası diskte bulunamadı. AttachmentId: {AttachmentId}", attachment.AttachmentId);
+                return NotFound();
+            }
+
+            // Tarayıcıda asla "sayfa" olarak açılmasın (Kavram 3) ve diskte önbelleğe alınmasın (Kavram 4)
+            Response.Headers.XContentTypeOptions = "nosniff";
+            Response.Headers.ContentSecurityPolicy = "sandbox";
+            Response.Headers.CacheControl = "private, no-store";
+
+            // fileDownloadName → Content-Disposition: attachment; filename="..."; filename*=UTF-8''...
+            return PhysicalFile(path, attachment.ContentType, attachment.FileName);
+        }
+
+        // JSON hata yanıtı: { "error": "..." }. Mesajlar kullanıcı girdisi içermez (12.15.c).
+        private IActionResult AttachmentError(string message, int status = StatusCodes.Status400BadRequest)
+            => StatusCode(status, new { error = message });
+
+        // Taslağın ekleri, formda listelenmek üzere (12.16). Sadece gösterim bilgileri; StoredName forma çıkmaz.
+        private Task<List<AttachmentItem>> LoadAttachmentsAsync(int messageId) =>
+            _context.Attachments
+                .Where(a => a.MessageId == messageId)
+                .OrderBy(a => a.AttachmentId)                 // yükleme sırası
+                .Select(a => new AttachmentItem(a.AttachmentId, a.FileName, a.SizeBytes))
+                .ToListAsync();
+
         // Benim, hâlâ taslak ve çöpte değil. Değilse null (gönderilmiş, silinmiş ya da başkasının).
         private Task<Message?> FindMyDraftAsync(int messageId)
         {
@@ -808,11 +994,12 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         // TASLAK kuralları: eksik olabilir ama boş olamaz ve sınırları aşamaz (9.6, 12.9)
-        private void ValidateDraft(CreateMessageViewModel model, string safeBody, RecipientList recipients)
+        private void ValidateDraft(CreateMessageViewModel model, string safeBody, RecipientList recipients, bool hasAttachments)
         {
             string subject = model.Subject?.Trim() ?? string.Empty;
 
-            bool hasAnything = recipients.Count > 0 || model.CategoryId.HasValue || subject.Length > 0 || HasVisibleText(safeBody);
+            // 12.16: sadece eki olan taslak da "boş" değildir (Kavram 2)
+            bool hasAnything = hasAttachments || recipients.Count > 0 || model.CategoryId.HasValue || subject.Length > 0 || HasVisibleText(safeBody);
             if (!hasAnything)
             {
                 ModelState.AddModelError(string.Empty, "Boş bir taslak kaydedilemez.");

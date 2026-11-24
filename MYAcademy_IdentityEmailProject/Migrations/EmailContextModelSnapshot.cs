@@ -102,6 +102,51 @@ namespace MYAcademy_IdentityEmailProject.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Attachment", b =>
+                {
+                    b.Property<int>("AttachmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AttachmentId"));
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("MessageId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoredName")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("char(32)")
+                        .IsFixedLength();
+
+                    b.HasKey("AttachmentId");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("StoredName")
+                        .IsUnique();
+
+                    b.ToTable("Attachments");
+                });
+
             modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Category", b =>
                 {
                     b.Property<int>("CategoryId")
@@ -440,6 +485,17 @@ namespace MYAcademy_IdentityEmailProject.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Attachment", b =>
+                {
+                    b.HasOne("MYAcademy_IdentityEmailProject.Entities.Message", "Message")
+                        .WithMany("Attachments")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Message");
+                });
+
             modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.MailboxItem", b =>
                 {
                     b.HasOne("MYAcademy_IdentityEmailProject.Entities.Message", "Message")
@@ -553,6 +609,8 @@ namespace MYAcademy_IdentityEmailProject.Migrations
 
             modelBuilder.Entity("MYAcademy_IdentityEmailProject.Entities.Message", b =>
                 {
+                    b.Navigation("Attachments");
+
                     b.Navigation("MailboxItems");
 
                     b.Navigation("Recipients");

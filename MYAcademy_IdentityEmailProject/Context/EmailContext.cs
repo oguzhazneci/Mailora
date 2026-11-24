@@ -15,7 +15,7 @@ namespace MYAcademy_IdentityEmailProject.Context
         public DbSet<Message> Messages { get; set; }
         public DbSet<MessageRecipient> MessageRecipients { get; set; }
         public DbSet<MailboxItem> MailboxItems { get; set; }
-
+        public DbSet<Attachment> Attachments { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             // Identity tablolarının (AspNetUsers vb.) yapılandırması. Mutlaka ilk satır.

@@ -23,5 +23,7 @@
 
         public List<MessageRecipient> Recipients { get; set; } = new();
         public List<MailboxItem> MailboxItems { get; set; } = new();
+        public List<Attachment> Attachments { get; set; } = new();   // 12.15: ekler mesaja aittir
+
     }
 }

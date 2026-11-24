@@ -14,6 +14,8 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
 
         // Aynı alıcıların profil fotoğrafları: UserId → "{guid}.jpg" (fotoğrafı olmayanlar sözlükte yok) — 10.4
         public Dictionary<string, string> UserPhotos { get; set; } = new();
+        // Eki olan mesajların Id'leri (12.17): satırdaki ataç ikonu için. Ekler yüklenmez (Kavram 1).
+        public HashSet<int> MessagesWithAttachments { get; set; } = new();
 
         // Aktif kapsamdaki (kategori + arama) çip sayıları
         public int AllCount { get; set; }

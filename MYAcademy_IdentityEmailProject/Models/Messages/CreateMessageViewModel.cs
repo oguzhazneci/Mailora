@@ -1,7 +1,11 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
+    // Formda listelenen bir ek (12.16): sadece gösterim bilgileri
+    public sealed record AttachmentItem(int Id, string Name, long Size);
+
     // Yeni Mesaj formu. Alıcı alanları METİN: "a@x.com, b@y.com" (12.9).
     // Alıcı kuralları (format, tekilleştirme, en fazla 20) attribute ile değil RecipientList ile denetlenir:
     // üç alan BİRLİKTE değerlendirilmeli (toplam sayı, alanlar arası tekrar).
@@ -25,5 +29,9 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
         [Required(ErrorMessage = "Mesaj içeriği boş olamaz.")]
         [StringLength(100_000, ErrorMessage = "Mesaj içeriği çok uzun.")]
         public string Body { get; set; } = string.Empty;
+
+        // Taslağın ekleri (12.16). Formdan GELMEZ: her zaman veritabanından doldurulur (Kavram 1).
+        [BindNever]
+        public List<AttachmentItem> Attachments { get; set; } = new();
     }
 }

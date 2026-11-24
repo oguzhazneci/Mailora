@@ -172,6 +172,14 @@
             opacity: .45;
             cursor: not-allowed;
         }
+
+    /* Ataç ikonu (12.17) */
+    .att-ic {
+        color: var(--muted, #85899B);
+        font-size: .9rem;
+        margin-right: 6px;
+    }
+
 </style>
 
 <section class="inbox" id="inbox">
@@ -342,6 +350,11 @@
                         <span class="snippet">@Snippet(msg.Body)</span>
                     </div>
                     <div class="mi-meta">
+                        @* Ek var mı? (12.17) Kategori etiketinden önce, sabit bir konumda *@
+                        @if (Model.MessagesWithAttachments.Contains(msg.MessageId))
+                        {
+                            <i class="bi bi-paperclip att-ic" title="Ekli dosya var" aria-label="Ekli dosya var"></i>
+                        }
                         @if (msg.Category != null)
                         {
                             <span class="tag" style="color:@msg.Category.ColorCode;background:color-mix(in srgb, @msg.Category.ColorCode 14%, white)">@msg.Category.CategoryName</span>

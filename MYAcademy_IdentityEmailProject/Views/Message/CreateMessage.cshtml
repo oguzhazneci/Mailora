@@ -2,6 +2,8 @@
 
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Mvc.Rendering
+@using MYAcademy_IdentityEmailProject.Services
+@using MYAcademy_IdentityEmailProject.Helpers
 @{
     // Taslak düzenleniyorsa aynı sayfa "Taslağı Düzenle" olur (9.6)
     bool isDraftEdit = Model.DraftId.HasValue;
@@ -75,6 +77,96 @@
 
     .cmp-select-wrap.has-value .cmp-select-dot {
         opacity: 1;
+    }
+    /* Ekler (12.16) */
+    .cmp-attach {
+        padding: 12px 20px;
+        border-top: 1px solid var(--border, #ECEAF5);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .att-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+        .att-list:not(:has(li)) {
+            display: none;
+        }
+
+    .att-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 100%;
+        padding: 6px 6px 6px 10px;
+        border: 1px solid var(--border, #ECEAF5);
+        border-radius: 10px;
+        background: #FAF9FE;
+        font-size: .85rem;
+    }
+
+        .att-item .n {
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .att-item .s {
+            color: var(--muted, #85899B);
+            font-size: .78rem;
+        }
+
+        .att-item .x {
+            border: 0;
+            background: transparent;
+            color: var(--muted, #85899B);
+            border-radius: 6px;
+            padding: 0 4px;
+            line-height: 1;
+        }
+
+            .att-item .x:hover {
+                background: #EFEDF8;
+                color: #303348;
+            }
+
+        .att-item.uploading {
+            opacity: .6;
+        }
+
+            .att-item.uploading .x {
+                visibility: hidden;
+            }
+
+            .att-item.uploading .s::after {
+                content: " · yükleniyor…";
+            }
+
+    .att-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+        .att-bar[hidden] {
+            display: none;
+        }
+
+    .att-pick {
+        cursor: pointer;
+    }
+
+    .att-hint {
+        color: var(--muted, #85899B);
+        font-size: .8rem;
     }
 </style>
 
@@ -228,6 +320,34 @@
             <div class="cmp-err">@ErrText(nameof(Model.Body))</div>
         </div>
 
+        <!-- Ekler (12.16): dosya seçildiği anda yüklenir ve taslağa bağlanır (karar 2-A) -->
+        <div class="cmp-attach" id="cmpAttach"
+             data-upload-url="@Url.Action("UploadAttachment", "Message")"
+             data-remove-url="@Url.Action("RemoveAttachment", "Message")"
+             data-max-files="@AttachmentRules.MaxFiles"
+             data-max-file="@AttachmentRules.MaxFileBytes"
+             data-max-total="@AttachmentRules.MaxTotalBytes">
+            <ul class="att-list" id="attList">
+                @foreach (var a in Model.Attachments)
+                {
+                    <li class="att-item" data-id="@a.Id" data-size="@a.Size">
+                        <i class="bi bi-paperclip"></i><span class="n" title="@a.Name">@a.Name</span><span class="s">@AttachmentDisplay.Size(a.Size)</span><button type="button" class="x" aria-label="@a.Name ekini kaldır"><i class="bi bi-x"></i></button>
+                    </li>
+                }
+            </ul>
+            @* JS kapalıyken gizli: yükleme JS ile yapılır (Kavram 6) *@
+            <div class="att-bar" id="attBar" hidden>
+                @* name YOK: dosya form POST'una girmez, JS ayrı istekle yükler (Kavram 1) *@
+                <label class="btn-soft att-pick">
+                    <i class="bi bi-paperclip"></i> Dosya ekle
+                    <input type="file" id="attInput" multiple accept="@AttachmentRules.AcceptAttribute" hidden>
+                </label>
+                <span class="att-hint">
+                    En fazla @AttachmentRules.MaxFiles dosya · dosya başına @(AttachmentRules.MaxFileBytes / (1024 * 1024)) MB · toplam @(AttachmentRules.MaxTotalBytes / (1024 * 1024)) MB
+                </span>
+            </div>
+        </div>
+
         <!-- Alt işlem çubuğu -->
         <div class="cmp-actions">
             @* İki gönder butonu, tek form: hangi butona basıldığı "intent" değeriyle sunucuya gider (9.6) *@
@@ -243,7 +363,7 @@
         <div class="cd-card" role="alertdialog" aria-modal="true" aria-labelledby="cdTitle">
             <div class="cd-ic"><i class="bi bi-exclamation-triangle"></i></div>
             <h5 id="cdTitle">Formu temizlemek istiyor musunuz?</h5>
-            <p>Alıcı, kategori, konu ve mesaj içeriği silinecek.</p>
+            <p>Alıcı, kategori, konu ve mesaj içeriği silinecek. Ekler taslakta kalır.</p>
             <div class="cd-actions">
                 <button type="button" class="btn-soft" data-dialog="cancel">Vazgeç</button>
                 <button type="button" class="btn-soft danger-solid" data-dialog="ok"><i class="bi bi-trash3"></i> Evet, Temizle</button>
@@ -543,6 +663,120 @@
             subject.addEventListener('input', () => { clearFieldError($('#rowSubject')); markDirty(); });
             subject.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); editor.focus(); } });
 
+                        /* --- Ekler (12.16): seçilen dosya HEMEN yüklenir ve taslağa bağlanır (karar 2-A) ---
+               Yüklemeler SIRAYLA yapılır: ilk istek (gerekirse) taslağı oluşturur,
+               sonrakiler dönen draftId'yi kullanır (Kavram 3). */
+            const attach = $('#cmpAttach'), attList = $('#attList'), attInput = $('#attInput');
+            const draftIdInput = $('input[name="DraftId"]', form);
+            const token = $('input[name="__RequestVerificationToken"]', form).value;
+            const LIMITS = { files: +attach.dataset.maxFiles, file: +attach.dataset.maxFile, total: +attach.dataset.maxTotal };
+            const MB = 1024 * 1024;
+            let uploading = 0;                       // bekleyen + süren yüklemeler: bitmeden form gönderilmez (Kavram 4)
+            let uploadQueue = Promise.resolve();
+
+            const attachmentItems = () => $$('.att-item', attList);
+            const attachmentCount = () => attachmentItems().length;
+            const attachmentBytes = () => attachmentItems().reduce((n, li) => n + Number(li.dataset.size || 0), 0);
+            const formatSize = b => b < MB
+                ? `${Math.max(1, Math.round(b / 1024))} KB`
+                : `${(b / MB).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} MB`;
+
+            // Dosya göndermek için FormData gerekir. Token formdaki gizli alandan (Kavram 2).
+            const postForm = (url, values) => {
+                const body = new FormData();
+                Object.entries(values).forEach(([k, v]) => body.append(k, v));
+                body.append('__RequestVerificationToken', token);
+                return fetch(url, { method: 'POST', body });
+            };
+
+            function addAttachmentItem(name, size) {
+                const li = document.createElement('li');
+                li.className = 'att-item';
+                li.dataset.size = size;
+                li.innerHTML = '<i class="bi bi-paperclip"></i><span class="n"></span><span class="s"></span>' +
+                               '<button type="button" class="x"><i class="bi bi-x"></i></button>';
+                const n = $('.n', li);
+                n.textContent = name;                // kullanıcı verisi: textContent (Kavram 5)
+                n.title = name;
+                $('.s', li).textContent = formatSize(size);
+                $('.x', li).setAttribute('aria-label', `${name} ekini kaldır`);
+                attList.appendChild(li);
+                return li;
+            }
+
+            async function uploadOne(file, li) {
+                const values = { file };
+                if (draftIdInput.value) values.draftId = draftIdInput.value;
+
+                try {
+                    const res = await postForm(attach.dataset.uploadUrl, values);
+                    if (res.status === 413) throw new Error(`Bir dosya en fazla ${LIMITS.file / MB} MB olabilir.`);
+
+                    const data = await res.json().catch(() => null);      // oturum düşmüşse JSON yerine HTML gelir
+                    if (!res.ok || !data?.attachment) throw new Error(data?.error || 'Dosya yüklenemedi.');
+
+                    draftIdInput.value = data.draftId;                    // taslak yeni oluştuysa bundan sonra o kullanılır
+                    li.dataset.id = data.attachment.id;
+                    const n = $('.n', li);
+                    n.textContent = n.title = data.attachment.name;       // sunucunun temizlediği ad (12.15.c)
+                    li.classList.remove('uploading');
+                } catch (err) {
+                    li.remove();
+                    // fetch'in kendi hatası (bağlantı koptu, sunucu isteği yarıda kesti) TypeError olarak gelir
+                    const msg = err instanceof TypeError ? 'Dosya yüklenemedi: bağlantı hatası.' : err.message;
+                    showToast(escapeHtml(msg), 'bi-exclamation-triangle');
+                }
+            }
+
+            attInput.addEventListener('change', () => {
+                const files = [...attInput.files];
+                attInput.value = '';                 // aynı dosya bir daha seçilebilsin
+                let count = attachmentCount(), total = attachmentBytes();
+
+                for (const file of files) {
+                    // Ön kontrol: kullanıcıyı boşuna bekletmemek için. Asıl kontrol sunucuda.
+                    if (count >= LIMITS.files) {
+                        showToast(`Bir mesaja en fazla ${LIMITS.files} dosya eklenebilir.`, 'bi-exclamation-circle');
+                        break;
+                    }
+                    if (file.size > LIMITS.file) {
+                        showToast(`${escapeHtml(file.name)}: bir dosya en fazla ${LIMITS.file / MB} MB olabilir.`, 'bi-exclamation-circle');
+                        continue;
+                    }
+                    if (total + file.size > LIMITS.total) {
+                        showToast(`${escapeHtml(file.name)}: eklerin toplamı ${LIMITS.total / MB} MB'ı aşıyor.`, 'bi-exclamation-circle');
+                        continue;
+                    }
+                    count++;
+                    total += file.size;
+
+                    const li = addAttachmentItem(file.name, file.size);
+                    li.classList.add('uploading');
+                    uploading++;
+                    // Kuyruğun SONUNA ekle: önceki yükleme bitmeden bu başlamaz (Kavram 3)
+                    uploadQueue = uploadQueue.then(() => uploadOne(file, li)).finally(() => { uploading--; });
+                }
+            });
+
+            attList.addEventListener('click', async e => {
+                const btn = e.target.closest('.x');
+                if (!btn) return;
+                const li = btn.closest('.att-item');
+                if (li.classList.contains('uploading') || !li.dataset.id) return;   // Id gelmeden kaldırılamaz
+
+                btn.disabled = true;
+                try {
+                    const res = await postForm(attach.dataset.removeUrl, { id: li.dataset.id });
+                    if (!res.ok) throw new Error();
+                    li.remove();
+                } catch {
+                    btn.disabled = false;
+                    showToast('Ek kaldırılamadı.', 'bi-exclamation-triangle');
+                }
+            });
+
+            $('#attBar').hidden = false;             // JS çalışıyor: ek çubuğunu göster (Kavram 6)
+
             /* --- Doğrulama & gönderim --- */
             function validate() {
                 let first = null;
@@ -578,7 +812,8 @@
             function validateDraft() {
                 let first = null;
                 const fail = (row, msg, el) => { setFieldError(row, msg); if (!first) first = el; };
-                const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
+                                const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML)
+                              && attachmentCount() === 0;   // 12.16: sadece eki olan taslak boş değildir
 
                 if (empty) { showToast(MSG.draftEmpty, 'bi-info-circle'); return false; }
                 if (recipientCount() > RULES.maxRecipients) fail(fields.To.row, MSG.toTooMany(recipientCount()), fields.To.input);
@@ -597,6 +832,13 @@
                 Object.values(fields).forEach(f => f.commit());     // yarım kalan adres de kart olsun
                 syncContent();
                 if (sending) { e.preventDefault(); return; }
+
+                // Ekler yüklenirken gönderme ya da kaydetme yok: DraftId henüz gelmemiş olabilir (Kavram 4)
+                if (uploading > 0) {
+                    e.preventDefault();
+                    showToast('Ekler yükleniyor, lütfen bitmesini bekleyin.', 'bi-hourglass-split');
+                    return;
+                }
 
                 // Hangi buton? Ctrl+Enter (requestSubmit) butonsuz gönderir → "send" sayılır.
                 const isDraft = e.submitter?.value === 'draft';
@@ -651,7 +893,7 @@
             });
 
             // Kaydedilmemiş içerikle sayfadan çıkarken uyar
-            window.addEventListener('beforeunload', e => { if (dirty && !sending) { e.preventDefault(); e.returnValue = ''; } });
+            window.addEventListener('beforeunload', e => { if ((dirty || uploading > 0) && !sending) { e.preventDefault(); e.returnValue = ''; } });
 
             /* --- Başlangıç --- */
             syncContent();

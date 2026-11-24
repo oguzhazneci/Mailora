@@ -1,6 +1,7 @@
 ﻿@model MessageDetailViewModel
 @using System.Globalization
 @using MYAcademy_IdentityEmailProject.Entities
+@using MYAcademy_IdentityEmailProject.Helpers
 @{
     var msg = Model.Message;
     var tr = new CultureInfo("tr-TR");
@@ -43,7 +44,73 @@
     // Yanıtla / İlet sadece gönderilmiş mesajlarda (çöpteki bir taslak da burada açılabilir)
     bool canRespond = msg.SentDate != null;
 }
+<style>
+    /* Ekler (12.17) */
+    .pv-attachments {
+        margin-top: 22px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border, #ECEAF5);
+    }
 
+    .pv-att-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 10px;
+        font-size: .82rem;
+        color: var(--muted, #85899B);
+    }
+
+    .pv-att-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .pv-att {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 260px;
+        max-width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border, #ECEAF5);
+        border-radius: 12px;
+        background: #FAF9FE;
+        color: inherit;
+        text-decoration: none;
+        transition: border-color .15s, background .15s;
+    }
+
+        .pv-att:hover {
+            border-color: #D9D4F5;
+            background: #F4F2FC;
+        }
+
+        .pv-att > .bi:first-child {
+            font-size: 1.4rem;
+            color: var(--accent, #8B7FD6);
+        }
+
+        .pv-att .n {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: .86rem;
+        }
+
+        .pv-att .s {
+            white-space: nowrap;
+            font-size: .76rem;
+            color: var(--muted, #85899B);
+        }
+
+        .pv-att .dl {
+            color: var(--muted, #85899B);
+        }
+</style>
 <div class="msg-page">
     <div class="mp-top">
         <a class="btn-soft mp-back" asp-controller="Message" asp-action="@backAction"><i class="bi bi-arrow-left"></i> Geri</a>
@@ -115,6 +182,28 @@
 
         @* Temizlenmiş HTML: biçimlendirme kalır, script ve olay özellikleri silinmiştir (Kavram 5). *@
         <div class="pv-body">@Html.Raw(Model.SafeBodyHtml)</div>
+
+            @* Ekler (12.17): her indirme DownloadAttachment'taki yetki kontrolünden geçer *@
+            @if (Model.Attachments.Count > 0)
+            {
+                <div class="pv-attachments">
+                    <div class="pv-att-head">
+                        <i class="bi bi-paperclip"></i>
+                        @Model.Attachments.Count ek · @AttachmentDisplay.Size(Model.Attachments.Sum(a => a.Size))
+                    </div>
+                    <div class="pv-att-list">
+                        @foreach (var a in Model.Attachments)
+                        {
+                            <a class="pv-att" asp-controller="Message" asp-action="DownloadAttachment" asp-route-id="@a.Id" title="@a.Name dosyasını indir">
+                                <i class="bi @AttachmentDisplay.Icon(a.Name)"></i>
+                                <span class="n">@a.Name</span>
+                                <span class="s">@AttachmentDisplay.Size(a.Size)</span>
+                                <i class="bi bi-download dl"></i>
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
 
         @* Yanıtla / İlet = önceden doldurulmuş Yeni Mesaj sayfası (9.7, Kavram 1) *@
         @if (canRespond)
