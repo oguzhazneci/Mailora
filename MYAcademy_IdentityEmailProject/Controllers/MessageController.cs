@@ -485,22 +485,39 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return RedirectToAction("Trash");
         }
 
-        // Kalıcı silmenin ortak kısmı (Kavram 3 ve 4)
+        // Kalıcı silmenin ortak kısmı (9.5 Kavram 3 ve 4; 12.19 ek dosyaları)
         private async Task<int> DeleteForeverAsync(IQueryable<MailboxItem> myTrashedItems)
         {
+            int count;
+            List<string> orphanFiles;
+
             // İki ayrı komut → açık transaction. Commit'e ulaşılmazsa ikisi birden geri alınır.
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+            await using (var transaction = await _context.Database.BeginTransactionAsync())
+            {
+                // 1) Benim kopyalarım
+                count = await myTrashedItems.ExecuteDeleteAsync();
 
-            // 1) Benim kopyalarım
-            int count = await myTrashedItems.ExecuteDeleteAsync();
+                // Hiç kopyası kalmayan mesajlar. Sorgu TANIMI: aşağıda iki kez kullanılıyor (Kavram 2).
+                var orphans = _context.Messages.Where(m => !m.MailboxItems.Any());          // SQL: NOT EXISTS (...)
 
-            // 2) Hiç kopyası kalmayan mesajlar (alıcı satırları veritabanındaki ON DELETE CASCADE ile).
-            //    "Kuralı bozan her mesaj": arada sahipsiz kalmış bir mesaj olursa o da temizlenir.
-            await _context.Messages
-                .Where(m => !m.MailboxItems.Any())          // SQL: NOT EXISTS (...)
-                .ExecuteDeleteAsync();
+                // 2) Silinecek mesajların ek dosya adları: SİLMEDEN ÖNCE (cascade satırları götürecek)
+                orphanFiles = await orphans
+                    .SelectMany(m => m.Attachments)
+                    .Select(a => a.StoredName)
+                    .ToListAsync();
 
-            await transaction.CommitAsync();
+                // 3) Yetim mesajlar. Alıcı ve ek satırları veritabanındaki ON DELETE CASCADE ile gider.
+                await orphans.ExecuteDeleteAsync();
+
+                await transaction.CommitAsync();
+            }
+
+            // 4) Dosyalar COMMIT'TEN SONRA (Kavram 1). Silinemeyen dosya görünmez kalır → 12.19.b süpürücüsü.
+            foreach (string storedName in orphanFiles)
+            {
+                _attachmentStorage.Delete(storedName);
+            }
+
             return count;
         }
 
@@ -569,6 +586,15 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 }
 
                 model.Body = isReply ? BuildReplyQuote(source) : BuildForwardBlock(source);
+                // İlet (karar 5-A): kaynağın ekleri LİSTELENİR, henüz kopyalanmaz. GET yan etkisiz olmalı (Kavram 1).
+                if (!isReply)
+                {
+                    model.ForwardOf = source.MessageId;
+                    model.Attachments = (await LoadAttachmentsAsync(source.MessageId))
+                        .Select(a => a with { Forwarded = true })
+                        .ToList();
+                    model.ForwardAttachmentIds = model.Attachments.Select(a => a.Id).ToList();
+                }
                 ViewData["ComposeHeading"] = heading;
             }
             else if (!string.IsNullOrWhiteSpace(to) && to.Length <= RecipientList.MaxAddressLength)
@@ -592,9 +618,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             var recipients = RecipientList.Parse(model.To, model.Cc, model.Bcc);
 
             // DraftId istemciden gelir: benim mi, hâlâ taslak mı? (9.6, Kavram 4)
-            // 12.16: doğrulamadan ÖNCE bulunur; taslağın ekleri doğrulamayı etkiler (Kavram 2)
+            // 12.16: doğrulamadan ÖNCE bulunur; taslağın ekleri doğrulamayı etkiler
             Message? draft = null;
-            bool hasAttachments = false;
             if (model.DraftId.HasValue)
             {
                 draft = await FindMyDraftAsync(model.DraftId.Value);
@@ -602,8 +627,14 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 {
                     return DraftGone();
                 }
-                hasAttachments = await _context.Attachments.AnyAsync(a => a.MessageId == draft.MessageId);
             }
+
+            // Taslaktaki ekler + İlet ile gelecek ekler (12.18). Sınırlar ikisinin TOPLAMINA uygulanır (Kavram 4).
+            long[] draftSizes = draft == null
+                ? []
+                : await _context.Attachments.Where(a => a.MessageId == draft.MessageId).Select(a => a.SizeBytes).ToArrayAsync();
+            var forwarded = await FindForwardAttachmentsAsync(model.ForwardOf, model.ForwardAttachmentIds);
+            bool hasAttachments = draftSizes.Length > 0 || forwarded.Count > 0;
 
             if (isDraft)
             {
@@ -620,6 +651,15 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 }
             }
 
+            if (draftSizes.Length + forwarded.Count > AttachmentRules.MaxFiles)
+            {
+                ModelState.AddModelError(string.Empty, $"Bir mesaja en fazla {AttachmentRules.MaxFiles} dosya eklenebilir.");
+            }
+            else if (draftSizes.Sum() + forwarded.Sum(a => a.SizeBytes) > AttachmentRules.MaxTotalBytes)
+            {
+                ModelState.AddModelError(string.Empty, $"Eklerin toplam boyutu en fazla {AttachmentRules.MaxTotalBytes / (1024 * 1024)} MB olabilir.");
+            }
+
             if (model.CategoryId.HasValue && !await _context.Categories.AnyAsync(c => c.CategoryId == model.CategoryId))
             {
                 ModelState.AddModelError(nameof(model.CategoryId), "Seçilen kategori bulunamadı.");
@@ -633,14 +673,20 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 model.Bcc = RecipientList.Join(recipients.Bcc);
                 model.Body = safeBody;
 
-                // Ekler doğrulama hatasında kaybolmaz: taslaktan yeniden okunur (12.14 Kavram 3)
-                if (draft != null)
-                {
-                    model.Attachments = await LoadAttachmentsAsync(draft.MessageId);
-                }
+                // Ekler doğrulama hatasında kaybolmaz: taslaktakiler + hâlâ seçili iletilecekler (12.16, 12.18)
+                model.Attachments = draft == null ? new() : await LoadAttachmentsAsync(draft.MessageId);
+                model.Attachments.AddRange(forwarded.Select(a => new AttachmentItem(a.AttachmentId, a.FileName, a.SizeBytes, true)));
+                model.ForwardAttachmentIds = forwarded.Select(a => a.AttachmentId).ToList();   // sadece DOĞRULANANLAR geri yazılır
 
                 await LoadCategoriesAsync();
                 return View(model);
+            }
+
+            // İletilecek ekler bir taslağa kopyalanır; sonrası değişmeden Save/Send akışı (Kavram 3)
+            if (forwarded.Count > 0)
+            {
+                draft ??= NewDraft(_userManager.GetUserId(User)!, DateTime.Now);
+                CopyForwardedInto(draft, forwarded);
             }
 
             return isDraft
@@ -932,12 +978,69 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         private IActionResult AttachmentError(string message, int status = StatusCodes.Status400BadRequest)
             => StatusCode(status, new { error = message });
 
+        // Boş taslak (12.16, 12.18): yükleme ve iletme aynı şekilde oluşturur. SaveChanges çağıran kaydeder.
+        private Message NewDraft(string userId, DateTime now)
+        {
+            var draft = new Message { SenderId = userId, CreatedDate = now, SentDate = null };   // SentDate null = taslak (5.2)
+            draft.MailboxItems.Add(new MailboxItem { UserId = userId, Folder = MailFolder.Draft, IsRead = true });
+            _context.Messages.Add(draft);
+            return draft;
+        }
+
+        // İletilecek ekler (12.18). İKİ şart birlikte (Kavram 2): ek gerçekten o mesajın eki mi,
+        // ve o mesajın bende bir kopyası var mı? Uymayan Id'ler sessizce düşer.
+        private async Task<List<Attachment>> FindForwardAttachmentsAsync(int? forwardOf, List<int> ids)
+        {
+            if (!forwardOf.HasValue || ids.Count == 0)
+            {
+                return new();
+            }
+
+            string userId = _userManager.GetUserId(User)!;
+            var wanted = ids.Distinct().Take(AttachmentRules.MaxFiles).ToList();   // istemci 10.000 Id gönderse bile
+
+            return await _context.Attachments
+                .AsNoTracking()                                                      // sadece okunur, kaynak satırlar değişmez
+                .Where(a => a.MessageId == forwardOf.Value
+                         && wanted.Contains(a.AttachmentId)
+                         && a.Message.SentDate != null
+                         && a.Message.MailboxItems.Any(i => i.UserId == userId))
+                .OrderBy(a => a.AttachmentId)
+                .ToListAsync();
+        }
+
+        // Kopyala (karar 5-A): her ek YENİ bir dosya ve YENİ bir satır. Kaynak mesaj silinse de iletilen mesaj etkilenmez.
+        // SaveChanges başarısız olursa kopyalar diskte sahipsiz kalır → 12.19'daki temizlik.
+        private void CopyForwardedInto(Message draft, List<Attachment> forwarded)
+        {
+            var now = DateTime.Now;
+            foreach (var source in forwarded)
+            {
+                string? copy = _attachmentStorage.Copy(source.StoredName);
+                if (copy == null)
+                {
+                    // Satır var, kaynak dosya yok: o eki atla, gönderimi engelleme
+                    _logger.LogWarning("İletilecek ek dosyası bulunamadı. AttachmentId: {AttachmentId}", source.AttachmentId);
+                    continue;
+                }
+
+                draft.Attachments.Add(new Attachment
+                {
+                    FileName = source.FileName,
+                    StoredName = copy,                 // YENİ ad: unique index iki satırın aynı dosyayı göstermesine izin vermez (12.15.b)
+                    ContentType = source.ContentType,
+                    SizeBytes = source.SizeBytes,
+                    CreatedDate = now
+                });
+            }
+        }
+
         // Taslağın ekleri, formda listelenmek üzere (12.16). Sadece gösterim bilgileri; StoredName forma çıkmaz.
         private Task<List<AttachmentItem>> LoadAttachmentsAsync(int messageId) =>
             _context.Attachments
                 .Where(a => a.MessageId == messageId)
                 .OrderBy(a => a.AttachmentId)                 // yükleme sırası
-                .Select(a => new AttachmentItem(a.AttachmentId, a.FileName, a.SizeBytes))
+                .Select(a => new AttachmentItem(a.AttachmentId, a.FileName, a.SizeBytes, false))
                 .ToListAsync();
 
         // Benim, hâlâ taslak ve çöpte değil. Değilse null (gönderilmiş, silinmiş ya da başkasının).
@@ -1118,6 +1221,26 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             string senderName = SenderDisplayName();
             string? senderEmail = User.FindFirstValue(ClaimTypes.Email);
 
+            // Ekler (12.18): yüklenenler ve İlet ile kopyalananlar artık veritabanında, mesajın Id'siyle.
+            // Satırı olup dosyası olmayan ek atlanır ve loglanır (12.17'deki indirmeyle aynı tutum).
+            var attachments = new List<MailAttachment>();
+            var rows = await _context.Attachments
+                .Where(a => a.MessageId == message.MessageId)
+                .OrderBy(a => a.AttachmentId)
+                .Select(a => new { a.AttachmentId, a.FileName, a.ContentType, a.StoredName })
+                .ToListAsync();
+
+            foreach (var row in rows)
+            {
+                string? path = _attachmentStorage.GetPath(row.StoredName);
+                if (path == null)
+                {
+                    _logger.LogWarning("SMTP eki diskte bulunamadı. AttachmentId: {AttachmentId}", row.AttachmentId);
+                    continue;
+                }
+                attachments.Add(new MailAttachment(row.FileName, row.ContentType, path));
+            }
+            
             string html = message.Body +
                 "<hr style=\"border:none;border-top:1px solid #ddd;margin:24px 0 12px\">" +
                 "<p style=\"color:#888;font-size:12px\">Bu e-posta <b>" + WebUtility.HtmlEncode(senderName) +
@@ -1133,7 +1256,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                     body: html,
                     isHtml: true,
                     fromName: $"{senderName} (Mailora)",
-                    replyToEmail: senderEmail);
+                    replyToEmail: senderEmail,
+                    attachments: attachments);
                 return true;
             }
             catch (Exception ex)

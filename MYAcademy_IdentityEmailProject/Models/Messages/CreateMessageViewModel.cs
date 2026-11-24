@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
-    // Formda listelenen bir ek (12.16): sadece gösterim bilgileri
-    public sealed record AttachmentItem(int Id, string Name, long Size);
+    // Formda listelenen bir ek (12.16). Forwarded: iletilen mesajdan gelen, henüz kopyalanmamış ek (12.18)
+    public sealed record AttachmentItem(int Id, string Name, long Size, bool Forwarded);
 
     // Yeni Mesaj formu. Alıcı alanları METİN: "a@x.com, b@y.com" (12.9).
     // Alıcı kuralları (format, tekilleştirme, en fazla 20) attribute ile değil RecipientList ile denetlenir:
@@ -33,5 +33,10 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
         // Taslağın ekleri (12.16). Formdan GELMEZ: her zaman veritabanından doldurulur (Kavram 1).
         [BindNever]
         public List<AttachmentItem> Attachments { get; set; } = new();
+
+        // İlet (12.18): kaynak mesaj ve iletilmek üzere SEÇİLİ ekleri.
+        // İstemciden gelir: sunucu ikisini birlikte doğrular (Kavram 2).
+        public int? ForwardOf { get; set; }
+        public List<int> ForwardAttachmentIds { get; set; } = new();
     }
 }

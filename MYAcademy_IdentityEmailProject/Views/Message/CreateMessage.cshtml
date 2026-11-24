@@ -168,6 +168,10 @@
         color: var(--muted, #85899B);
         font-size: .8rem;
     }
+    /* İletilecek ek (12.18): henüz kopyalanmadı → kesikli kenar */
+    .att-item.forwarded {
+        border-style: dashed;
+    }
 </style>
 
 <section class="compose" id="compose">
@@ -316,6 +320,8 @@
             <input type="hidden" asp-for="Body" id="cmpContent">
             @* Düzenlenen taslağın Id'si. İstemciden gelir: sunucu sahipliğini ve hâlâ taslak olduğunu kontrol eder (9.6). *@
             <input type="hidden" asp-for="DraftId">
+            @* İletilen mesajın Id'si (12.18). İstemciden gelir: sunucu bu mesajın bende kopyası olduğunu doğrular. *@
+            <input type="hidden" asp-for="ForwardOf">
             <div class="cmp-counter" id="cmpCounter">0 kelime · 0 karakter</div>
             <div class="cmp-err">@ErrText(nameof(Model.Body))</div>
         </div>
@@ -330,8 +336,15 @@
             <ul class="att-list" id="attList">
                 @foreach (var a in Model.Attachments)
                 {
-                    <li class="att-item" data-id="@a.Id" data-size="@a.Size">
-                        <i class="bi bi-paperclip"></i><span class="n" title="@a.Name">@a.Name</span><span class="s">@AttachmentDisplay.Size(a.Size)</span><button type="button" class="x" aria-label="@a.Name ekini kaldır"><i class="bi bi-x"></i></button>
+                    @* İletilecek ek (12.18): henüz kopyalanmadı; Id'si forma gizli alanla gider (Kavram 2) *@
+                    <li class="att-item @(a.Forwarded ? "forwarded" : "")" data-id="@a.Id" data-size="@a.Size"
+                        data-forwarded="@(a.Forwarded ? "true" : null)"
+                        title="@(a.Forwarded ? "İletilen mesajdan · gönderince kopyalanır" : null)">
+                        <i class="bi @(a.Forwarded ? "bi-forward" : "bi-paperclip")"></i><span class="n" title="@a.Name">@a.Name</span><span class="s">@AttachmentDisplay.Size(a.Size)</span><button type="button" class="x" aria-label="@a.Name ekini kaldır"><i class="bi bi-x"></i></button>
+                        @if (a.Forwarded)
+                        {
+                            <input type="hidden" name="ForwardAttachmentIds" value="@a.Id">
+                        }
                     </li>
                 }
             </ul>
@@ -762,6 +775,9 @@
                 const btn = e.target.closest('.x');
                 if (!btn) return;
                 const li = btn.closest('.att-item');
+                // İletilecek ek henüz kopyalanmadı: sunucuda silinecek bir şey yok.
+                // li silinince içindeki gizli Id alanı da gider (Kavram 1 ve 2).
+                if (li.dataset.forwarded) { li.remove(); return; }
                 if (li.classList.contains('uploading') || !li.dataset.id) return;   // Id gelmeden kaldırılamaz
 
                 btn.disabled = true;

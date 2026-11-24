@@ -18,7 +18,7 @@ namespace MYAcademy_IdentityEmailProject.Services
                                     string? fromName = null, string? replyToEmail = null)
         {
             var settings = ReadSettings();
-            var mimeMessage = CreateMessage(settings, subject, body, isHtml, fromName, replyToEmail);
+            var mimeMessage = CreateMessage(settings, subject, body, isHtml, fromName, replyToEmail, files: null);
             mimeMessage.To.Add(MailboxAddress.Parse(toEmail));
 
             using var smtpClient = await ConnectAsync(settings);
@@ -29,7 +29,8 @@ namespace MYAcademy_IdentityEmailProject.Services
         public async Task SendToManyAsync(IEnumerable<string> headerTo, IEnumerable<string> headerCc,
                                           IEnumerable<string> envelopeRecipients,
                                           string subject, string body, bool isHtml,
-                                          string? fromName = null, string? replyToEmail = null)
+                                          string? fromName = null, string? replyToEmail = null,
+                                          IReadOnlyList<MailAttachment>? attachments = null)
         {
             var envelope = envelopeRecipients.Select(a => MailboxAddress.Parse(a)).ToList();
             if (envelope.Count == 0)
@@ -38,7 +39,16 @@ namespace MYAcademy_IdentityEmailProject.Services
             }
 
             var settings = ReadSettings();
-            var mimeMessage = CreateMessage(settings, subject, body, isHtml, fromName, replyToEmail);
+
+            // Ekler belleğe okunur (12.18): MIME iletisi base64 ile kodlanırken içeriğin tamamı gerekir.
+            // Sınır 20 MB olduğu için bu projede kabul edilebilir (Kavram 3).
+            var files = new List<(string Name, byte[] Data, string ContentType)>();
+            foreach (var a in attachments ?? [])
+            {
+                files.Add((a.FileName, await File.ReadAllBytesAsync(a.Path), a.ContentType));
+            }
+
+            var mimeMessage = CreateMessage(settings, subject, body, isHtml, fromName, replyToEmail, files);
 
             // GÖRÜNEN başlıklar (12.10, karar 5-A)
             foreach (string address in headerTo) mimeMessage.To.Add(MailboxAddress.Parse(address));
@@ -79,7 +89,8 @@ namespace MYAcademy_IdentityEmailProject.Services
         }
 
         private static MimeMessage CreateMessage(SmtpSettings settings, string subject, string body, bool isHtml,
-                                                 string? fromName, string? replyToEmail)
+                                                 string? fromName, string? replyToEmail,
+                                                 IReadOnlyList<(string Name, byte[] Data, string ContentType)>? files)
         {
             var mimeMessage = new MimeMessage();
             // Görünen ad değişebilir, adres her zaman kimliği doğrulanmış SMTP hesabıdır (SPF/DKIM, 8.4)
@@ -95,6 +106,14 @@ namespace MYAcademy_IdentityEmailProject.Services
                 bodyBuilder.HtmlBody = body;
             else
                 bodyBuilder.TextBody = body;
+
+            // Ekler (12.18): BodyBuilder gövdeyi "multipart/mixed" yapar; her ek ayrı bir parça (Kavram 1).
+            // Türkçe karakterli dosya adlarını MimeKit kendisi kodlar (RFC 2231).
+            foreach (var (name, data, contentType) in files ?? [])
+            {
+                bodyBuilder.Attachments.Add(name, data, ContentType.Parse(contentType));
+            }
+
             mimeMessage.Body = bodyBuilder.ToMessageBody();
 
             return mimeMessage;

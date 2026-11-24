@@ -48,6 +48,7 @@ builder.Services.AddScoped<IMailboxCounter, MailboxCounter>();
 builder.Services.AddScoped<IDashboardQueries, DashboardQueries>();
 builder.Services.AddScoped<INotificationFeed, NotificationFeed>();
 builder.Services.AddSingleton<IAttachmentStorage, AttachmentStorage>();
+builder.Services.AddHostedService<OrphanAttachmentCleaner>();   // 12.19: sahipsiz ek dosyası süpürücüsü
 
 // HTML temizleyici: izin listesindeki etiketleri bırakır, script ve olay özelliklerini siler.
 // Singleton: yapılandırması değiştirilmediği sürece bir örneğin paylaşılması güvenli.

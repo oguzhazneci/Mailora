@@ -107,6 +107,21 @@ namespace MYAcademy_IdentityEmailProject.Services
             TryDelete(Path.Combine(_folder, storedName));
         }
 
+        public IReadOnlyList<(string StoredName, DateTime LastWriteUtc)> ListFiles()
+        {
+            if (!Directory.Exists(_folder))
+            {
+                return [];   // henüz hiç dosya yüklenmemiş
+            }
+
+            // Sadece bizim ürettiğimiz biçimdeki adlar: klasöre elle bırakılmış başka dosyalara dokunulmaz
+            return Directory.EnumerateFiles(_folder)
+                .Select(path => (Name: Path.GetFileName(path), Path: path))
+                .Where(f => IsStoredName(f.Name))
+                .Select(f => (f.Name, File.GetLastWriteTimeUtc(f.Path)))
+                .ToList();
+        }
+
         /* ---------- Yardımcılar ---------- */
 
         // Sunucunun ürettiği biçim: tam 32 küçük onaltılık karakter. "../x" gibi bir değer asla eşleşmez.

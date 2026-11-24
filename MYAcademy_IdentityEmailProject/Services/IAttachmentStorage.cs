@@ -22,5 +22,7 @@ namespace MYAcademy_IdentityEmailProject.Services
 
         // Dosyayı siler. Yoksa sessizce geçer; silinemezse loglar.
         void Delete(string storedName);
+        // Klasördeki, sunucunun ürettiği biçimdeki dosyalar ve son yazılma zamanları (UTC). Süpürücü için (12.19).
+        IReadOnlyList<(string StoredName, DateTime LastWriteUtc)> ListFiles();
     }
 }
