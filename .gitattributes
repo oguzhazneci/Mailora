@@ -61,3 +61,11 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+# GitHub dil istatistikleri (Linguist), 14.8
+# .sql dosyaları içerik kalıplarıyla tahmin ediliyor ve seed'deki "BEGIN ;THROW" PostgreSQL kalıbına uyuyor.
+# Veritabanımız SQL Server: tahmin yerine dili açıkça söylüyoruz.
+*.sql linguist-language=TSQL
+
+# 155 mesajlık seed bir script tarafından üretildi; projenin kodu değil.
+# Dil istatistiğine katılmaz, GitHub'da değişiklik görünümünde katlı gelir.
+**/Database/Seed/01-rich-seed.sql linguist-generated=true
