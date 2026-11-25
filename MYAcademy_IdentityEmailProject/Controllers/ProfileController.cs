@@ -3,12 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MYAcademy_IdentityEmailProject.Entities;
 using MYAcademy_IdentityEmailProject.Helpers;
 using MYAcademy_IdentityEmailProject.Models.Account;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;   // 14.8: ImageSharp yerine (Release derlemesi lisans anahtarı istiyordu)
 
 namespace MYAcademy_IdentityEmailProject.Controllers
 {
@@ -19,6 +14,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         private const long MaxPhotoBytes = 5 * 1024 * 1024;    // 5 MB (dosya boyutu)
         private const int MaxPhotoSide = 8000;                 // piksel (açılmış boyut: Kavram 3)
         private const int AvatarSize = 256;                    // kaydedilen kare avatar
+        private const int AvatarJpegQuality = 85;
         // Ad kuralı (32 onaltılık karakter + .jpg) AvatarHelper'da: liste, Detay ve navbar da aynı kuralı kullanır (10.4)
 
         private readonly UserManager<AppUser> _userManager;
@@ -107,7 +103,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         /* =====================================================================
-           PROFİL FOTOĞRAFI (10.3)
+           PROFİL FOTOĞRAFI (10.3; 14.8'de SkiaSharp'a taşındı)
            ===================================================================== */
 
         [HttpPost]
@@ -134,63 +130,42 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             await using var buffer = new MemoryStream();
             await photo.CopyToAsync(buffer);
 
-            // 2) İmza: biçim, dosyanın ilk byte'larından anlaşılır. Resmi açmadan, sadece başlığı okur.
-            ImageInfo info;
-            try
-            {
-                buffer.Position = 0;
-                info = await Image.IdentifyAsync(buffer);
-            }
-            catch (ImageFormatException)          // tanınmayan biçim ya da bozuk içerik
+            // 2) İmza: SKCodec sadece başlığı okur, pikselleri açmaz.
+            //    Tanımadığı ya da bozuk içerikte istisna fırlatmaz, null döner.
+            using var data = SKData.CreateCopy(buffer.ToArray());
+            using var codec = SKCodec.Create(data);
+            if (codec == null)
             {
                 return PhotoError("Dosya bir resim değil ya da bozuk.");
             }
 
-            if (info.Metadata.DecodedImageFormat is not (JpegFormat or PngFormat or WebpFormat))
+            if (codec.EncodedFormat is not (SKEncodedImageFormat.Jpeg or SKEncodedImageFormat.Png or SKEncodedImageFormat.Webp))
             {
                 return PhotoError("Sadece JPEG, PNG veya WebP yükleyebilirsiniz.");
             }
 
             // 3) Açılmış boyut: 200 KB'lık bir dosya 50.000 × 50.000 piksel olabilir (Kavram 3)
-            if (info.Width > MaxPhotoSide || info.Height > MaxPhotoSide)
+            if (codec.Info.Width > MaxPhotoSide || codec.Info.Height > MaxPhotoSide)
             {
                 return PhotoError($"Fotoğraf çok büyük (en fazla {MaxPhotoSide} × {MaxPhotoSide} piksel).");
             }
-            if (info.FrameCount > 1)
+            if (codec.FrameCount > 1)
             {
                 return PhotoError("Hareketli resimler desteklenmiyor.");
             }
 
-            // 4) Piksellere aç → işle → piksellerden SIFIRDAN yeni bir resim üret (Kavram 2)
-            Rgba32[] pixels = new Rgba32[AvatarSize * AvatarSize];
-            try
-            {
-                buffer.Position = 0;
-                using var source = await Image.LoadAsync<Rgba32>(buffer);
-                source.Mutate(x => x
-                    .AutoOrient()                                  // EXIF'teki "yan çekildi" bilgisini piksellere uygula
-                    .Resize(new ResizeOptions
-                    {
-                        Size = new Size(AvatarSize, AvatarSize),
-                        Mode = ResizeMode.Crop                     // ortadan kare kırp
-                    })
-                    .BackgroundColor(Color.White));                // PNG şeffaflığı JPEG'de siyah olmasın
-                source.CopyPixelDataTo(pixels);
-            }
-            catch (ImageFormatException)
+            // 4) Piksellere aç → işle → piksellerden SIFIRDAN yeni bir JPEG üret (Kavram 2)
+            byte[]? jpeg = RenderAvatar(codec);
+            if (jpeg == null)
             {
                 return PhotoError("Fotoğraf okunamadı.");
             }
 
-            // Yeni resmin tek kaynağı piksel dizisi: EXIF, GPS, yorum, gömülü veri... hiçbiri buraya taşınamaz.
+            // Yeni resmin tek kaynağı piksel yüzeyi: EXIF, GPS, yorum, gömülü veri... hiçbiri buraya taşınamaz.
             string fileName = $"{Guid.NewGuid():N}.jpg";      // adı SUNUCU üretir (Kavram 1)
             Directory.CreateDirectory(AvatarFolder);
             string newPath = Path.Combine(AvatarFolder, fileName);
-
-            using (var clean = Image.LoadPixelData<Rgba32>(pixels, AvatarSize, AvatarSize))
-            {
-                await clean.SaveAsJpegAsync(newPath, new JpegEncoder { Quality = 85 });
-            }
+            await System.IO.File.WriteAllBytesAsync(newPath, jpeg);
 
             // 5) Sıralama (Kavram 4): yeni dosya yazıldı → veritabanı → eski dosya EN SON silinir
             string? oldFile = user.ImageUrl;
@@ -265,6 +240,79 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         /* ---------- Yardımcılar ---------- */
+
+        // 14.8: Pikselleri aç → EXIF yönünü uygula → ortadan kare kırp → 256'ya ölçekle → beyaz zemin → JPEG.
+        // Başarısızsa null: çağıran taraf kullanıcıya "okunamadı" der.
+        private static byte[]? RenderAvatar(SKCodec codec)
+        {
+            // Kaynak pikselleri aç. Yarım ya da bozuk dosyada GetPixels "Success" dışında bir sonuç döner: kabul etmiyoruz.
+            var sourceInfo = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+            using var bitmap = new SKBitmap(sourceInfo);
+            if (codec.GetPixels(sourceInfo, bitmap.GetPixels()) != SKCodecResult.Success)
+            {
+                return null;
+            }
+            bitmap.SetImmutable();                       // SKImage'a kopyalamadan devredilebilsin
+            using var source = SKImage.FromBitmap(bitmap);
+
+            // Yön düzeltildikten sonraki en/boy (90°/270° dönüşlerde yer değiştirir)
+            SKMatrix orient = OrientationMatrix(codec.EncodedOrigin, sourceInfo.Width, sourceInfo.Height,
+                                                out int width, out int height);
+
+            // Ortadaki en büyük kare, AvatarSize × AvatarSize'a ölçeklenir (ImageSharp'taki ResizeMode.Crop)
+            int side = Math.Min(width, height);
+            float cropX = (width - side) / 2f;
+            float cropY = (height - side) / 2f;
+            float scale = (float)AvatarSize / side;
+
+            // Üç dönüşüm tek matriste. PostConcat sırası: önce yön → sonra kareyi başlangıca kaydır → sonra ölçekle
+            SKMatrix transform = orient
+                .PostConcat(SKMatrix.CreateTranslation(-cropX, -cropY))
+                .PostConcat(SKMatrix.CreateScale(scale, scale));
+
+            using var surface = SKSurface.Create(new SKImageInfo(AvatarSize, AvatarSize));
+            if (surface == null)
+            {
+                return null;
+            }
+
+            SKCanvas canvas = surface.Canvas;
+            canvas.Clear(SKColors.White);                // PNG şeffaflığı JPEG'de siyah olmasın
+            canvas.SetMatrix(transform);
+            // Mipmap: büyük resim çok küçültülürken (ör. 4000 → 256) pürüzlü görünmesin
+            canvas.DrawImage(source, 0, 0, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+
+            // Yüzeyde sadece piksel var: metadata taşınamaz (Kavram 2)
+            using var avatar = surface.Snapshot();
+            using var encoded = avatar.Encode(SKEncodedImageFormat.Jpeg, AvatarJpegQuality);
+            return encoded?.ToArray();
+        }
+
+        // 14.8: EXIF yönü (1–8) için dönüşüm matrisi. ImageSharp'taki AutoOrient() karşılığı.
+        // Matris, kaydedilmiş (sx, sy) noktasını görüntülenecek (dx, dy) noktasına taşır:
+        //   dx = scaleX·sx + skewX·sy + transX
+        //   dy = skewY·sx  + scaleY·sy + transY
+        // 2–8'in yedisi de Pillow'un EXIF dönüşümleriyle piksel piksel karşılaştırılarak doğrulandı.
+        private static SKMatrix OrientationMatrix(SKEncodedOrigin origin, int w, int h, out int width, out int height)
+        {
+            bool swapsSides = origin is SKEncodedOrigin.LeftTop or SKEncodedOrigin.RightTop
+                                     or SKEncodedOrigin.RightBottom or SKEncodedOrigin.LeftBottom;
+            width = swapsSides ? h : w;
+            height = swapsSides ? w : h;
+
+            return origin switch
+            {
+                //                                                 scaleX skewX transX  skewY scaleY transY  perspektif
+                SKEncodedOrigin.TopRight => new SKMatrix(-1, 0, w, 0, 1, 0, 0, 0, 1),  // 2: yatay ayna
+                SKEncodedOrigin.BottomRight => new SKMatrix(-1, 0, w, 0, -1, h, 0, 0, 1),  // 3: 180°
+                SKEncodedOrigin.BottomLeft => new SKMatrix(1, 0, 0, 0, -1, h, 0, 0, 1),  // 4: dikey ayna
+                SKEncodedOrigin.LeftTop => new SKMatrix(0, 1, 0, 1, 0, 0, 0, 0, 1),  // 5: köşegen ayna (transpose)
+                SKEncodedOrigin.RightTop => new SKMatrix(0, -1, h, 1, 0, 0, 0, 0, 1),  // 6: saat yönünde 90° (telefonlarda en yaygın)
+                SKEncodedOrigin.RightBottom => new SKMatrix(0, -1, h, -1, 0, w, 0, 0, 1),  // 7: ters köşegen ayna (transverse)
+                SKEncodedOrigin.LeftBottom => new SKMatrix(0, 1, 0, -1, 0, w, 0, 0, 1),  // 8: saat yönünün tersine 90°
+                _ => SKMatrix.Identity                                 // 1 (TopLeft): dokunma
+            };
+        }
 
         // Fotoğraf hatası: küçük ayrı bir form olduğu için hata toast ile gösterilir (PRG)
         private IActionResult PhotoError(string message)
