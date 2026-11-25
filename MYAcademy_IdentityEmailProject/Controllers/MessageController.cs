@@ -482,7 +482,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 : "Çöp kutusu zaten boş.";
             TempData["ToastIcon"] = "bi-trash3-fill";
 
-            return RedirectToAction("Trash");
+            return RedirectToAction(nameof(Trash));
         }
 
         // Kalıcı silmenin ortak kısmı (9.5 Kavram 3 ve 4; 12.19 ek dosyaları)
@@ -725,7 +725,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             TempData["ToastIcon"] = "bi-file-earmark-check";
 
             // PRG: düzenleme adresine dön. Sonraki "Kaydet" AYNI taslağı günceller (9.6).
-            return RedirectToAction("CreateMessage", new { draftId = draft.MessageId });
+            return RedirectToAction(nameof(CreateMessage), new { draftId = draft.MessageId });
         }
 
         // Gönder: yeni mesaj ya da taslaktan gönderim (karar 4-A: aynı satır) — çok alıcılı (12.10)
@@ -821,7 +821,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             }
 
             // Post-Redirect-Get: gönderilen mesajın detayı
-            return RedirectToAction("Detail", new { id = message.MessageId });
+            return RedirectToAction(nameof(Detail), new { id = message.MessageId });
         }
 
         /* =====================================================================
@@ -1062,7 +1062,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         {
             TempData["Toast"] = "Bu taslak artık düzenlenemiyor: gönderilmiş ya da silinmiş olabilir.";
             TempData["ToastIcon"] = "bi-info-circle";
-            return RedirectToAction("Drafts");
+            return RedirectToAction(nameof(Drafts));
         }
 
         // GÖNDERİM kuralları (12.9): en az 1, en fazla 20 alıcı; her adres geçerli.

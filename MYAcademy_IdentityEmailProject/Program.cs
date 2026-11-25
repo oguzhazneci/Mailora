@@ -1,12 +1,13 @@
 using Ganss.Xss;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Authorization;
+using Microsoft.EntityFrameworkCore;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
-using MYAcademy_IdentityEmailProject.Services;
 using MYAcademy_IdentityEmailProject.Identity;
+using MYAcademy_IdentityEmailProject.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,11 +40,27 @@ builder.Services.AddControllersWithViews(options =>
         .RequireAuthenticatedUser()
         .Build();
     options.Filters.Add(new AuthorizeFilter(policy));
+    // 13.1: CSRF koruması varsayılan olarak açık. POST/PUT/PATCH/DELETE token ister, GET istemez.
+    // Action'lardaki [ValidateAntiForgeryToken] öznitelikleri kalabilir: aynı kontrol, zararsız tekrar.
+    options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
 });
 
 builder.Services.AddDbContext<EmailContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-builder.Services.AddScoped<IMailService, MailService>();
+// 13.3: Development'ta SMTP şifresi yoksa (ya da Mail:DevLogOnly açıksa) mailler GÖNDERİLMEZ, loga yazılır.
+// Production'da HER ZAMAN gerçek MailService (Kavram 1).
+bool useDevMailLog = builder.Environment.IsDevelopment() &&
+    (builder.Configuration.GetValue<bool>("Mail:DevLogOnly") ||
+     string.IsNullOrEmpty(builder.Configuration["SmtpSettings:Password"]));
+
+if (useDevMailLog)
+{
+    builder.Services.AddScoped<IMailService, DevelopmentLogMailService>();
+}
+else
+{
+    builder.Services.AddScoped<IMailService, MailService>();
+}
 builder.Services.AddScoped<IMailboxCounter, MailboxCounter>();
 builder.Services.AddScoped<IDashboardQueries, DashboardQueries>();
 builder.Services.AddScoped<INotificationFeed, NotificationFeed>();
