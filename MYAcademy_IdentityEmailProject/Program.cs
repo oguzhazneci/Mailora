@@ -120,3 +120,7 @@ app.MapControllerRoute(
 
 
 app.Run();
+
+
+// Entegrasyon testleri (14.6) WebApplicationFactory<Program> ile uygulamayı başlatabilsin diye
+public partial class Program { }

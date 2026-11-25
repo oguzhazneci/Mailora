@@ -7,10 +7,14 @@ namespace MYAcademy_IdentityEmailProject.Services
         private readonly string _folder;
         private readonly ILogger<AttachmentStorage> _logger;
 
-        public AttachmentStorage(IWebHostEnvironment env, ILogger<AttachmentStorage> logger)
+        public AttachmentStorage(IWebHostEnvironment env, IConfiguration configuration, ILogger<AttachmentStorage> logger)
         {
-            // wwwroot DIŞINDA (avatarlarla aynı yaklaşım, 10.3): tarayıcı bu klasöre doğrudan ulaşamaz
-            _folder = Path.Combine(env.ContentRootPath, "App_Data", "attachments");
+            // Varsayılan: wwwroot DIŞINDA App_Data/attachments (10.3, 12.15).
+            // "Attachments:Folder" ile değiştirilebilir: testler (14.6) ve farklı bir diske yedekleme isteyen yayın ortamları.
+            string? configured = configuration["Attachments:Folder"];
+            _folder = string.IsNullOrWhiteSpace(configured)
+                ? Path.Combine(env.ContentRootPath, "App_Data", "attachments")
+                : Path.GetFullPath(configured);
             _logger = logger;
         }
 
