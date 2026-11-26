@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Time.Testing;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Services;
 
@@ -12,12 +13,17 @@ using MYAcademy_IdentityEmailProject.Services;
 
 namespace MYAcademy_IdentityEmailProject.Tests.Integration;
 
-// Uygulamayı test için kurar: ayrı veritabanı, sahte mail, geçici ek klasörü, süpürücü kapalı (14.6.a Kavram 2)
+// Uygulamayı test için kurar: ayrı veritabanı, sahte mail, geçici ek klasörü, arka plan servisleri kapalı,
+// donmuş saat (14.6.a Kavram 2; 15.6)
 public sealed class MailoraAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public string DatabaseName { get; } = $"MailoraTest_{Guid.NewGuid():N}";
     public string AttachmentFolder { get; } = Path.Combine(Path.GetTempPath(), "MailoraTest", Guid.NewGuid().ToString("N"));
     public FakeMailService Mail { get; } = new();
+
+    // 15.6: Uygulamanın saati. Kurulduğu anda DONAR ve testler onu değiştirmez (Kavram 2):
+    // tarihleri saate göre ayarlayan VERİDİR. Yerel saat dilimi UTC (Kavram 3).
+    public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
 
     // CI'da MAILORA_TEST_SQL ortam değişkeni (SQL Server konteyneri), yerelde LocalDB (karar 3-A).
     // Sunucu ondan gelir, veritabanı adı her çalıştırmada benzersizdir.
@@ -48,9 +54,17 @@ public sealed class MailoraAppFactory : WebApplicationFactory<Program>, IAsyncLi
             services.RemoveAll<IMailService>();
             services.AddSingleton<IMailService>(Mail);
 
-            // Sadece süpürücü: web sunucusunun kendisi de bir IHostedService, hepsini silemeyiz
+            // Sadece bizim arka plan servislerimiz: web sunucusunun kendisi de bir IHostedService, hepsini silemeyiz.
+            // Kendi zamanlamasıyla çalışan bir şey test sonucunu zamanlamaya bağlar (14.9, soru 7).
             var cleaner = services.Single(d => d.ImplementationType == typeof(OrphanAttachmentCleaner));
             services.Remove(cleaner);
+
+            var purger = services.Single(d => d.ImplementationType == typeof(TrashPurger));   // 15.6
+            services.Remove(purger);
+
+            // 15.6: gerçek saat yerine donmuş sahte saat. Servis (PurgeExpiredAsync) ve görünüm (rozet) ikisi de buradan okur.
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(Clock);
         });
     }
 

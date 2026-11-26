@@ -3,6 +3,8 @@
 @using System.Net
 @using System.Text.RegularExpressions
 @using MYAcademy_IdentityEmailProject.Entities
+@using MYAcademy_IdentityEmailProject.Services
+@inject TimeProvider Clock
 @{
     // Başlık, aktif menü ve linklerin action'ı görünüm tanımından gelir (9.2)
     ViewData["Title"] = Model.Title;
@@ -173,7 +175,34 @@
             cursor: not-allowed;
         }
 
-    /* Ataç ikonu (12.17) */
+    /* Çöp kutusu bilgi şeridi ve "yakında silinecek" rozeti (15.5) */
+    .trash-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+        padding: 9px 14px;
+        border-radius: 12px;
+        background: #F4F5F9;
+        color: #5D6075;
+        font-size: 13px;
+    }
+
+    .purge-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-right: 6px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: color-mix(in srgb, #C2476B 10%, white);
+        color: #C2476B;
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+        
+        /* Ataç ikonu (12.17) */
     .att-ic {
         color: var(--muted, #85899B);
         font-size: .9rem;
@@ -263,6 +292,15 @@
             </form>
         </div>
 
+        @if (Model.IsTrash)
+        {
+            @* Otomatik silme görünür olmalı (15.5). Sayı kuraldan: kural değişirse metin de değişir. *@
+            <div class="trash-note">
+                <i class="bi bi-info-circle"></i>
+                <span>Çöp kutusundaki mesajlar, çöpe taşındıktan yaklaşık @TrashRules.RetentionDays gün sonra kalıcı olarak silinir.</span>
+            </div>
+        }
+        
         <!-- Toplu işlemler (7.7): seçim bu sayfadaki satırlarla sınırlı -->
         <div class="bulk-bar" id="bulkBar"
              data-read-url="@Url.Action("BulkSetRead", "Message")"
@@ -350,6 +388,21 @@
                         <span class="snippet">@Snippet(msg.Body)</span>
                     </div>
                     <div class="mi-meta">
+                        
+                        @* Son WarningDays günde uyarı (15.5, karar 1-B). Hesap TrashRules'tan: servisle aynı formül. *@
+                        @if (Model.IsTrash && item.DeletedDate is DateTime deleted)
+                        {
+                            var left = TrashRules.ExpiresAt(deleted) - Clock.GetLocalNow().DateTime;
+                            if (left.TotalDays <= TrashRules.WarningDays)
+                            {
+                                int days = (int)Math.Ceiling(left.TotalDays);
+                                <span class="purge-badge" data-purge-days="@days" title="Çöpe taşınma: @deleted.ToString("d MMMM yyyy HH:mm", Tr)">
+                                    <i class="bi bi-hourglass-split"></i>
+                                    @(days <= 1 ? "24 saat içinde kalıcı olarak silinecek" : $"{days} gün içinde kalıcı olarak silinecek")
+                                </span>
+                            }
+                        }
+
                         @* Ek var mı? (12.17) Kategori etiketinden önce, sabit bir konumda *@
                         @if (Model.MessagesWithAttachments.Contains(msg.MessageId))
                         {

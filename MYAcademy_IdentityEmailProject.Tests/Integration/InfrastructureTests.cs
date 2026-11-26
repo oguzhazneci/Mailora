@@ -35,6 +35,21 @@ public class InfrastructureTests(MailoraAppFactory factory)
     }
 
     [Fact]
+    public void TrashPurger_IsNotRegistered()
+    {
+        Assert.DoesNotContain(factory.Services.GetServices<IHostedService>(), s => s is TrashPurger);
+    }
+
+    [Fact]
+    public void TimeProvider_IsTheFrozenFake()
+    {
+        var time = factory.Services.GetRequiredService<TimeProvider>();
+
+        Assert.Same(factory.Clock, time);                   // fabrikadaki nesnenin ta KENDİSİ
+        Assert.Equal(time.GetUtcNow(), time.GetUtcNow());   // iki okuma arasında zaman akmıyor: donmuş
+    }
+
+    [Fact]
     public async Task Migrations_SeedTenCategories()
     {
         using var scope = factory.Services.CreateScope();

@@ -29,11 +29,12 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         private readonly IMailService _mailService;
         private readonly ILogger<MessageController> _logger;
         private readonly IAttachmentStorage _attachmentStorage;
+        private readonly ITrashService _trash;   // 15.3: kalıcı silme (arka plan servisiyle ortak)
 
         public MessageController(EmailContext context, UserManager<AppUser> userManager,
                                  IHtmlSanitizer sanitizer, IMailboxCounter counter,
                                  IMailService mailService, ILogger<MessageController> logger,
-                                   IAttachmentStorage attachmentStorage)
+                                 IAttachmentStorage attachmentStorage, ITrashService trash)
         {
             _context = context;
             _userManager = userManager;
@@ -42,6 +43,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             _mailService = mailService;
             _logger = logger;
             _attachmentStorage = attachmentStorage;
+            _trash = trash;
         }
         /* =====================================================================
         MESAJ LİSTELERİ (7.2 – 7.4, ortak motor 9.2)
@@ -205,7 +207,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 MailboxView.Drafts => scoped.Where(i => i.Folder == MailFolder.Draft && i.DeletedDate == null),
                 _ => throw new NotSupportedException($"{view} görünümü henüz tanımlı değil.")
             };
-            
+
             if (query.CategoryId.HasValue)
             {
                 scoped = scoped.Where(i => i.Message.CategoryId == query.CategoryId);
@@ -461,8 +463,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
             string userId = _userManager.GetUserId(User)!;
 
-            int count = await DeleteForeverAsync(_context.MailboxItems
-                .Where(i => ids.Contains(i.MailboxItemId) && i.UserId == userId && i.DeletedDate != null));
+            // "Çöpte mi?" koşulunu servis kendisi ekler (15.3): burada sadece hangi kopyalar ve kimin
+            int count = await _trash.DeleteForeverAsync(i => ids.Contains(i.MailboxItemId) && i.UserId == userId);
 
             return Json(new { count, counts = await _counter.GetAsync(userId) });
         }
@@ -474,8 +476,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         {
             string userId = _userManager.GetUserId(User)!;
 
-            int count = await DeleteForeverAsync(_context.MailboxItems
-                .Where(i => i.UserId == userId && i.DeletedDate != null));
+            int count = await _trash.DeleteForeverAsync(i => i.UserId == userId);
 
             TempData["Toast"] = count > 0
                 ? $"Çöp kutusu boşaltıldı · {count} mesaj kalıcı olarak silindi."
@@ -485,41 +486,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return RedirectToAction(nameof(Trash));
         }
 
-        // Kalıcı silmenin ortak kısmı (9.5 Kavram 3 ve 4; 12.19 ek dosyaları)
-        private async Task<int> DeleteForeverAsync(IQueryable<MailboxItem> myTrashedItems)
-        {
-            int count;
-            List<string> orphanFiles;
-
-            // İki ayrı komut → açık transaction. Commit'e ulaşılmazsa ikisi birden geri alınır.
-            await using (var transaction = await _context.Database.BeginTransactionAsync())
-            {
-                // 1) Benim kopyalarım
-                count = await myTrashedItems.ExecuteDeleteAsync();
-
-                // Hiç kopyası kalmayan mesajlar. Sorgu TANIMI: aşağıda iki kez kullanılıyor (Kavram 2).
-                var orphans = _context.Messages.Where(m => !m.MailboxItems.Any());          // SQL: NOT EXISTS (...)
-
-                // 2) Silinecek mesajların ek dosya adları: SİLMEDEN ÖNCE (cascade satırları götürecek)
-                orphanFiles = await orphans
-                    .SelectMany(m => m.Attachments)
-                    .Select(a => a.StoredName)
-                    .ToListAsync();
-
-                // 3) Yetim mesajlar. Alıcı ve ek satırları veritabanındaki ON DELETE CASCADE ile gider.
-                await orphans.ExecuteDeleteAsync();
-
-                await transaction.CommitAsync();
-            }
-
-            // 4) Dosyalar COMMIT'TEN SONRA (Kavram 1). Silinemeyen dosya görünmez kalır → 12.19.b süpürücüsü.
-            foreach (string storedName in orphanFiles)
-            {
-                _attachmentStorage.Delete(storedName);
-            }
-
-            return count;
-        }
+        // Kalıcı silmenin ortak kısmı 15.3'te TrashService'e taşındı (arka plan servisi de kullanıyor).
 
         /* =====================================================================
                    YENİ MESAJ ve TASLAKLAR (8.2 – 8.4, 9.6, 9.7, 12.9)
@@ -1240,7 +1207,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 }
                 attachments.Add(new MailAttachment(row.FileName, row.ContentType, path));
             }
-            
+
             string html = message.Body +
                 "<hr style=\"border:none;border-top:1px solid #ddd;margin:24px 0 12px\">" +
                 "<p style=\"color:#888;font-size:12px\">Bu e-posta <b>" + WebUtility.HtmlEncode(senderName) +
