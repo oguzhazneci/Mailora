@@ -348,6 +348,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
             model.Email = user.Email ?? string.Empty;
             model.EmailConfirmed = user.EmailConfirmed;
+            model.TwoFactorEnabled = user.TwoFactorEnabled;
             model.UserName = user.UserName ?? string.Empty;
             model.DisplayName = fullName.Length > 0 ? fullName : model.UserName;
             model.SavedDescription = user.Description;

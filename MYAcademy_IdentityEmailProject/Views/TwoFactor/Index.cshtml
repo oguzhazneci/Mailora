@@ -1,0 +1,111 @@
+﻿@model TwoFactorIndexViewModel
+@{
+    ViewData["Title"] = "İki Adımlı Doğrulama";
+    ViewData["ActiveMenu"] = "profile";
+    Layout = "_MessageLayout";
+}
+
+<style>
+    .tf-action {
+        padding: 14px 0;
+        border-top: 1px solid var(--border);
+    }
+
+        .tf-action:first-of-type {
+            border-top: none;
+            padding-top: 0;
+        }
+
+        .tf-action h4 {
+            margin: 0 0 4px;
+            font-size: 14px;
+        }
+
+        .tf-action p {
+            margin: 0 0 10px;
+            color: #5D6075;
+            font-size: 13px;
+        }
+
+    .tf-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+        .tf-row .pf-input-wrap {
+            flex: 1;
+            min-width: 200px;
+        }
+
+    .tf-danger {
+        color: #C2476B;
+        border-color: color-mix(in srgb, #C2476B 25%, white);
+    }
+</style>
+
+<section class="profile">
+    <div class="pf-head">
+        <h1>İki Adımlı Doğrulama</h1>
+        <p>Girişte şifrenize ek olarak telefonunuzdaki authenticator uygulamasının ürettiği kod istenir.</p>
+    </div>
+
+    <div class="pf-card" style="max-width:720px">
+        <div class="pf-card-head">
+            <div class="ic" style="background:var(--mint);color:#3E9A77"><i class="bi bi-shield-lock"></i></div>
+            <div>
+                <h3>Durum: @(Model.Enabled ? "Açık" : "Kapalı")</h3>
+                <p>
+                    @(Model.Enabled
+                    ? "Hesabınız şifre ve telefonunuzdaki kodla korunuyor."
+                    : "Şu an girişte yalnızca şifreniz isteniyor.")
+                </p>
+            </div>
+        </div>
+
+        <div class="pf-card-body">
+            @if (Model.Enabled)
+            {
+                @* Üç işlem de şifre ister (16.5, karar 4-A). Her form kendi şifre alanını taşır. *@
+                <div class="tf-action">
+                    <h4><i class="bi bi-life-preserver"></i> Kurtarma kodları · kalan: @Model.RecoveryCodesLeft</h4>
+                    <p>Yeni kodlar üretilince eski kodların hepsi geçersiz olur.@(Model.RecoveryCodesLeft <= 3 ? " Kodlarınız azaldı: yenilemeniz önerilir." : "")</p>
+                    <form method="post" asp-action="RegenerateCodes" class="tf-row" autocomplete="off">
+                        <div class="pf-input-wrap"><i class="bi bi-lock lead"></i><input type="password" name="password" class="pf-input" placeholder="Şifreniz" autocomplete="current-password" required></div>
+                        <button type="submit" class="btn-soft"><i class="bi bi-arrow-repeat"></i> Yeni kodlar üret</button>
+                    </form>
+                </div>
+
+                <div class="tf-action">
+                    <h4><i class="bi bi-phone"></i> Telefonu değiştir / anahtarı sıfırla</h4>
+                    <p>Telefonunuz kaybolduysa ya da yeni bir telefona geçtiyseniz. Eski telefondaki kayıt çalışmaz hale gelir ve kurulumu yeniden yaparsınız.</p>
+                    <form method="post" asp-action="ResetKey" class="tf-row" autocomplete="off">
+                        <div class="pf-input-wrap"><i class="bi bi-lock lead"></i><input type="password" name="password" class="pf-input" placeholder="Şifreniz" autocomplete="current-password" required></div>
+                        <button type="submit" class="btn-soft"><i class="bi bi-qr-code"></i> Sıfırla ve yeniden kur</button>
+                    </form>
+                </div>
+
+                <div class="tf-action">
+                    <h4><i class="bi bi-shield-x"></i> İki adımlı doğrulamayı kapat</h4>
+                    <p>Girişte yalnızca şifreniz istenir. Hesabınız daha az korunur.</p>
+                    <form method="post" asp-action="Disable" class="tf-row" autocomplete="off"
+                          onsubmit="return confirm('İki adımlı doğrulama kapatılsın mı? Hesabınız daha az korunacak.');">
+                        <div class="pf-input-wrap"><i class="bi bi-lock lead"></i><input type="password" name="password" class="pf-input" placeholder="Şifreniz" autocomplete="current-password" required></div>
+                        <button type="submit" class="btn-soft tf-danger"><i class="bi bi-shield-x"></i> Kapat</button>
+                    </form>
+                </div>
+            }
+            else
+            {
+                <ol style="margin:0 0 14px;padding-left:20px;line-height:1.9;color:#5D6075;font-size:13.5px">
+                    <li>Telefonunuza bir authenticator uygulaması kurun (Google Authenticator, Microsoft Authenticator vb.).</li>
+                    <li>Sonraki ekrandaki QR kodunu uygulamayla okutun.</li>
+                    <li>Uygulamanın gösterdiği 6 haneli kodu girerek kurulumu tamamlayın.</li>
+                </ol>
+                <form method="post" asp-action="Start">
+                    <button type="submit" class="btn-send"><i class="bi bi-qr-code"></i> Kurulumu başlat</button>
+                </form>
+            }
+        </div>
+    </div>
+</section>

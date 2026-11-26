@@ -1,0 +1,37 @@
+﻿@model TwoFactorSetupViewModel
+@{
+    ViewData["Title"] = "İki Adımlı Doğrulama Kurulumu";
+    ViewData["ActiveMenu"] = "profile";
+    Layout = "_MessageLayout";
+}
+
+<section class="profile">
+    <div class="pf-head">
+        <h1>Kurulum</h1>
+        <p>QR kodunu authenticator uygulamanızla okutun, sonra uygulamanın gösterdiği kodu girin.</p>
+    </div>
+
+    <div class="pf-card" style="max-width:720px">
+        <div class="pf-card-body" style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+            <img src="@Model.QrCodeDataUri" alt="Authenticator kurulum QR kodu" width="200" height="200"
+                 style="border:1px solid var(--border);border-radius:12px;padding:8px;background:#fff">
+
+            <div style="flex:1;min-width:240px">
+                <p style="margin:0 0 6px;font-size:13px;color:#5D6075">QR kodunu okutamıyor musunuz? Bu anahtarı uygulamaya elle girin:</p>
+                <code style="display:block;padding:10px 12px;border-radius:10px;background:#F4F5F9;font-size:15px;letter-spacing:.5px;word-break:break-all">@Model.SharedKey</code>
+
+                <form method="post" asp-action="Setup" style="margin-top:18px" autocomplete="off">
+                    <div class="pf-field">
+                        <label for="tfCode">Doğrulama kodu</label>
+                        <div class="pf-input-wrap">
+                            <i class="bi bi-123 lead"></i>
+                            <input asp-for="Code" id="tfCode" class="pf-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456">
+                        </div>
+                        <div class="pf-error"><span asp-validation-for="Code"></span></div>
+                    </div>
+                    <button type="submit" class="btn-send" style="margin-top:10px"><i class="bi bi-shield-check"></i> Doğrula ve aç</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>

@@ -166,6 +166,20 @@
                             <span class="k"><i class="bi bi-key"></i> Şifre</span>
                             <span class="v"><a class="link-btn" asp-controller="Settings" asp-action="Index">Değiştir</a></span>
                         </li>
+                        <li>
+                            <span class="k"><i class="bi bi-shield-lock"></i> İki adımlı doğrulama</span>
+                            <span class="v">
+                                @if (Model.TwoFactorEnabled)
+                                {
+                                    <span class="pf-badge ok"><i class="bi bi-shield-fill-check"></i> Açık</span>
+                                }
+                                else
+                                {
+                                    <span>Kapalı</span>
+                                }
+                                <a class="link-btn" asp-controller="TwoFactor" asp-action="Index">Yönet</a>
+                            </span>
+                        </li>
                     </ul>
                     <div class="pf-note">
                         <i class="bi bi-info-circle"></i>

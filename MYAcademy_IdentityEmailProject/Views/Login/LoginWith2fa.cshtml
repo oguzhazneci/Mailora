@@ -1,0 +1,59 @@
+﻿@model LoginWith2faViewModel
+
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="tr">
+@await Component.InvokeAsync("_RegisterStyleComponentPartial", new { title = "Doğrulama Kodu" })
+<body>
+
+    <div class="auth-bg" aria-hidden="true"><span class="g1"></span><span class="g2"></span><span class="g3"></span></div>
+
+    <main class="auth-page">
+        <div class="auth-card">
+
+            @await Component.InvokeAsync("_RegisterBrandComponentPartial")
+
+            <section class="auth-form-wrap">
+                <div class="form-head">
+                    <h1>Doğrulama Kodu</h1>
+                    <p>Hesabınızda iki adımlı doğrulama açık. Telefonunuzdaki authenticator uygulamasının gösterdiği 6 haneli kodu girin.</p>
+                </div>
+
+                <partial name="_AuthMessages" />
+
+                <form asp-controller="Login" asp-action="LoginWith2fa" asp-route-returnUrl="@ViewBag.ReturnUrl" method="post" novalidate autocomplete="off">
+                    <div asp-validation-summary="All" class="server-alert"></div>
+
+                    @* İlk ekrandaki "Beni hatırla" seçimi kaybolmasın (Kavram 2) *@
+                    <input type="hidden" asp-for="RememberMe">
+
+                    <div class="form-grid">
+                        <div class="field span-2">
+                            <label asp-for="Code">Doğrulama kodu</label>
+                            <div class="input-wrap">
+                                <i class="bi bi-shield-lock lead"></i>
+                                <input class="a-input" asp-for="Code" type="text" placeholder="123 456" maxlength="7"
+                                       inputmode="numeric" autocomplete="one-time-code" spellcheck="false" autofocus>
+                            </div>
+                        </div>
+
+                        <div class="span-2 remember-row">
+                            <label class="remember"><input type="checkbox" class="m-check" asp-for="RememberMachine"> Bu cihazı hatırla</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary-x">
+                        <span class="lbl">Doğrula</span><i class="bi bi-arrow-right"></i>
+                    </button>
+
+                    <div class="secure-note"><i class="bi bi-life-preserver"></i> Telefonunuza erişemiyor musunuz?&nbsp;<a asp-action="LoginWithRecoveryCode" asp-route-returnUrl="@ViewBag.ReturnUrl">Kurtarma koduyla giriş yapın</a></div>
+                    <div class="form-foot"><a asp-action="SignIn">Giriş ekranına dön</a></div>
+                </form>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

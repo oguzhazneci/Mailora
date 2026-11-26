@@ -25,6 +25,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Account
 
         [BindNever] public string Email { get; set; } = string.Empty;
         [BindNever] public bool EmailConfirmed { get; set; }
+        public bool TwoFactorEnabled { get; set; }   // 16.2
         [BindNever] public string UserName { get; set; } = string.Empty;
 
         // Üst karttaki ad ve açıklama KAYITLI değerlerdir; formdaki (belki hatalı) değerler değil.

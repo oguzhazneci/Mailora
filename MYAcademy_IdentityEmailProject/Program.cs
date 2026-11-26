@@ -68,7 +68,7 @@ builder.Services.AddSingleton<IAttachmentStorage, AttachmentStorage>();
 builder.Services.AddHostedService<OrphanAttachmentCleaner>();   // 12.19: sahipsiz ek dosyası süpürücüsü
 builder.Services.AddHostedService<TrashPurger>();             // 15.4: 30 günü dolan çöpü kalıcı siler
 builder.Services.AddSingleton(TimeProvider.System);           // 15.4: gerçek saat; testte değiştirilir (15.6)
-builder.Services.AddScoped<ITrashService, TrashService>();   // 15.3: kalıcı silme (controller + 15.4 arka plan servisi)B
+builder.Services.AddScoped<ITrashService, TrashService>();   // 15.3: kalıcı silme (controller + 15.4 arka plan servisi)
 
 // HTML temizleyici: izin listesindeki etiketleri bırakır, script ve olay özelliklerini siler.
 // Singleton: yapılandırması değiştirilmediği sürece bir örneğin paylaşılması güvenli.

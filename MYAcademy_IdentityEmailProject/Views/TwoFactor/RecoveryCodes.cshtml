@@ -1,0 +1,64 @@
+﻿@model List<string>
+@{
+    ViewData["Title"] = "Kurtarma Kodları";
+    ViewData["ActiveMenu"] = "profile";
+    Layout = "_MessageLayout";
+}
+
+<section class="profile">
+    <div class="pf-head">
+        <h1>İki adımlı doğrulama açıldı</h1>
+        <p>Telefonunuza erişemezseniz bu kodlarla giriş yapabilirsiniz. Her kod yalnızca bir kez kullanılabilir.</p>
+    </div>
+
+    <div class="pf-card" style="max-width:720px">
+        <div class="pf-card-head">
+            <div class="ic" style="background:color-mix(in srgb, #C2476B 12%, white);color:#C2476B"><i class="bi bi-exclamation-triangle"></i></div>
+            <div>
+                <h3>Bu kodları şimdi kaydedin</h3>
+                <p>Bu sayfayı kapattıktan sonra kodlar <b>bir daha gösterilmez</b>.</p>
+            </div>
+        </div>
+
+        <div class="pf-card-body">
+            <div id="rcList" style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;font-family:ui-monospace,Consolas,monospace;font-size:15px">
+                @foreach (var code in Model)
+                {
+                    <code style="padding:8px 12px;border-radius:8px;background:#F4F5F9;text-align:center">@code</code>
+                }
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
+                <button type="button" class="btn-soft" id="rcCopy"><i class="bi bi-clipboard"></i> Kopyala</button>
+                <button type="button" class="btn-soft" id="rcDownload"><i class="bi bi-download"></i> İndir (.txt)</button>
+                <a class="btn-send" asp-action="Index" style="margin-left:auto"><i class="bi bi-check2"></i> Kaydettim</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const codes = [...document.querySelectorAll('#rcList code')].map(c => c.textContent.trim());
+            const text = 'Mailora kurtarma kodları (her biri bir kez kullanılabilir)\n\n' + codes.join('\n') + '\n';
+
+            document.getElementById('rcCopy').addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    Mailora.showToast('Kodlar panoya kopyalandı.', 'bi-clipboard-check');
+                } catch {
+                    Mailora.showToast('Kopyalanamadı: kodları elle seçip kopyalayın.', 'bi-exclamation-circle');
+                }
+            });
+
+            // Dosya tarayıcıda oluşturulur: kodlar sunucuya ikinci kez sorulmaz
+            document.getElementById('rcDownload').addEventListener('click', () => {
+                const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+                const a = Object.assign(document.createElement('a'), { href: url, download: 'mailora-kurtarma-kodlari.txt' });
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        })();
+    </script>
+}
