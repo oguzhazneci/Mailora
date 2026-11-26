@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using MYAcademy_IdentityEmailProject.Services;
 
 namespace MYAcademy_IdentityEmailProject.Controllers
 {
@@ -31,6 +32,13 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
         public IActionResult Page403()
         {
+            return View();
+        }
+
+        // 17.2: İstek sınırı aşıldı. Bekleme süresi rate limiter'ın OnRejected'ından gelir (HttpContext.Items)
+        public IActionResult Page429()
+        {
+            ViewBag.Message = RateLimitPolicies.Message(HttpContext.Items[RateLimitPolicies.RetryAfterItemKey] as int?);
             return View();
         }
 

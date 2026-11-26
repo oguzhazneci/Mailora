@@ -17,7 +17,7 @@ public static partial class TestSupport
 
     // Benzersiz adlı, e-postası DOĞRULANMIŞ bir kullanıcı (RequireConfirmedEmail = true).
     // Her test kendi kullanıcılarını oluşturur; başka testin verisine dokunmaz (karar 4-A).
-    public static async Task<TestUser> CreateUserAsync(this MailoraAppFactory factory, string prefix = "user")
+    public static async Task<TestUser> CreateUserAsync(this WebApplicationFactory<Program> factory, string prefix = "user")
     {
         string tag = Guid.NewGuid().ToString("N")[..8];
         var user = new AppUser
@@ -38,10 +38,10 @@ public static partial class TestSupport
     }
 
     // Kullanıcı oluştur ve GERÇEK giriş akışından geçirerek oturum aç (Kavram 1)
-    public static async Task<SignedInClient> SignInNewUserAsync(this MailoraAppFactory factory, string prefix = "user")
+    public static async Task<SignedInClient> SignInNewUserAsync(this WebApplicationFactory<Program> factory, string prefix = "user")
         => await factory.SignInAsync(await factory.CreateUserAsync(prefix));
 
-    public static async Task<SignedInClient> SignInAsync(this MailoraAppFactory factory, TestUser user)
+    public static async Task<SignedInClient> SignInAsync(this WebApplicationFactory<Program> factory, TestUser user)
     {
         var http = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -70,7 +70,7 @@ public static partial class TestSupport
     }
 
     // Testin veritabanına doğrudan bakması gerektiğinde (bir kopyanın Id'si, bir alanın son hali)
-    public static async Task<T> QueryDbAsync<T>(this MailoraAppFactory factory, Func<EmailContext, Task<T>> query)
+    public static async Task<T> QueryDbAsync<T>(this WebApplicationFactory<Program> factory, Func<EmailContext, Task<T>> query)
     {
         using var scope = factory.Services.CreateScope();
         return await query(scope.ServiceProvider.GetRequiredService<EmailContext>());

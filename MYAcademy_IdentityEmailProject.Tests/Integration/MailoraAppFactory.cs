@@ -45,7 +45,14 @@ public sealed class MailoraAppFactory : WebApplicationFactory<Program>, IAsyncLi
         builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] = ConnectionString,
-            ["Attachments:Folder"] = AttachmentFolder
+            ["Attachments:Folder"] = AttachmentFolder,
+            // 17.3: Test sunucusunda bütün istekler tek "istemci": gerçek sınırlar paketi kendi kendine kilitlerdi.
+            // Sınırın KENDİSİ ayrı bir fabrikayla test edilir (17.5).
+            ["RateLimiting:Auth:PermitLimit"] = "100000",
+            ["RateLimiting:AuthMail:PermitLimit"] = "100000",
+            ["RateLimiting:Lookup:PermitLimit"] = "100000",
+            ["RateLimiting:UserSend:PermitLimit"] = "100000",
+            ["RateLimiting:UserUpload:PermitLimit"] = "100000"
         }));
 
         // Program.cs'teki kayıtlardan SONRA çalışır: kaldırıp yerine koyabiliriz (Kavram 2)

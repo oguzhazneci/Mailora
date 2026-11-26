@@ -1,0 +1,18 @@
+﻿@{
+    Layout = "_ErrorLayout";
+    ViewData["Title"] = "Çok fazla deneme";
+}
+
+<div class="error-icon"><i class="bi bi-signpost-split"></i></div>
+<div class="error-code">409</div>
+<h1>Çok fazla deneme</h1>
+<p>@ViewBag.Message</p>
+
+<div class="error-actions">
+    <a class="btn-primary-x" asp-controller="Home" asp-action="Index">
+        <span class="lbl">Ana Sayfaya Dön</span><i class="bi bi-arrow-right"></i>
+    </a>
+    <button type="button" class="btn-ghost" onclick="history.back()">
+        <i class="bi bi-arrow-left"></i> Geri Dön
+    </button>
+</div>

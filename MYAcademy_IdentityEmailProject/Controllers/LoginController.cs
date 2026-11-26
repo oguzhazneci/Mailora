@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using MYAcademy_IdentityEmailProject.Services;
 using MYAcademy_IdentityEmailProject.Entities;
 using MYAcademy_IdentityEmailProject.Models.Account;
 
@@ -32,6 +34,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.Auth)]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SignIn(UserLoginViewModel userLoginViewModel, string? returnUrl = null)
@@ -103,6 +106,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.Auth)]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> LoginWith2fa(LoginWith2faViewModel model, string? returnUrl = null)
@@ -146,6 +150,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.Auth)]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> LoginWithRecoveryCode(LoginWithRecoveryCodeViewModel model, string? returnUrl = null)

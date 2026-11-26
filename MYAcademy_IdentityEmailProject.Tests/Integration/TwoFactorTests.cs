@@ -22,7 +22,8 @@ public partial class TwoFactorTests(MailoraAppFactory factory)
         Assert.Equal(HttpStatusCode.Redirect, (await client.PostFormAsync("/TwoFactor/Start")).StatusCode);
 
         // Telefonun QR'dan okuduğu anahtar
-        string key = await AuthenticatorKeyAsync(client.User);
+        string? key = await AuthenticatorKeyAsync(client.User);
+        Assert.NotNull(key);   // Start anahtarı üretti; derleyici de bundan sonra key'in null olmadığını biliyor
         var response = await client.PostFormAsync("/TwoFactor/Setup", ("Code", CurrentCode(key)));
 
         // Yönlendirme yok: kodlar bu yanıtta, bir kez (16.3 Kavram 2)

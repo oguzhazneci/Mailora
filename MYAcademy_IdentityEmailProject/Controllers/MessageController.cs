@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using MYAcademy_IdentityEmailProject.Context;
 using MYAcademy_IdentityEmailProject.Entities;
@@ -29,12 +30,13 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         private readonly IMailService _mailService;
         private readonly ILogger<MessageController> _logger;
         private readonly IAttachmentStorage _attachmentStorage;
+        private readonly ISendRateLimiter _sendLimiter;   // 17.4
         private readonly ITrashService _trash;   // 15.3: kalıcı silme (arka plan servisiyle ortak)
 
         public MessageController(EmailContext context, UserManager<AppUser> userManager,
                                  IHtmlSanitizer sanitizer, IMailboxCounter counter,
                                  IMailService mailService, ILogger<MessageController> logger,
-                                 IAttachmentStorage attachmentStorage, ITrashService trash)
+                                 IAttachmentStorage attachmentStorage, ITrashService trash, ISendRateLimiter sendLimiter)
         {
             _context = context;
             _userManager = userManager;
@@ -44,6 +46,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             _logger = logger;
             _attachmentStorage = attachmentStorage;
             _trash = trash;
+            _sendLimiter = sendLimiter;
         }
         /* =====================================================================
         MESAJ LİSTELERİ (7.2 – 7.4, ortak motor 9.2)
@@ -632,6 +635,18 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 ModelState.AddModelError(nameof(model.CategoryId), "Seçilen kategori bulunamadı.");
             }
 
+            // 17.4 (karar 7-B): Gönderme sınırı. Sadece diğer kontrollerden geçen istek hak harcar (Kavram 3).
+            // Reddedilirse aşağıdaki "geçersiz" yol formu alıcılar, gövde ve eklerle geri doldurur: mesaj kaybolmaz.
+            if (ModelState.IsValid)
+            {
+                string? limitError = await _sendLimiter.TryAcquireAsync(_userManager.GetUserId(User)!, HttpContext.RequestAborted);
+                if (limitError != null)
+                {
+                    ModelState.AddModelError(string.Empty, limitError);
+                    Response.StatusCode = StatusCodes.Status429TooManyRequests;   // gövde form, kod 429 (Kavram 4)
+                }
+            }
+
             if (!ModelState.IsValid)
             {
                 // Formu TEKİLLEŞTİRİLMİŞ haliyle geri doldur: kullanıcı neyin gönderileceğini görsün
@@ -802,6 +817,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         // Büyük istek controller'a gelmeden reddedilir (413). Pay: form alanları ve multipart sınırları için 1 MB.
         [RequestSizeLimit(AttachmentRules.MaxFileBytes + 1024 * 1024)]
         [RequestFormLimits(MultipartBodyLengthLimit = AttachmentRules.MaxFileBytes + 1024 * 1024)]
+        [EnableRateLimiting(RateLimitPolicies.UserUpload)]   // 17.4: kullanıcı başına; reddedilirse JSON { error }
         public async Task<IActionResult> UploadAttachment(int? draftId, IFormFile? file)
         {
             string userId = _userManager.GetUserId(User)!;

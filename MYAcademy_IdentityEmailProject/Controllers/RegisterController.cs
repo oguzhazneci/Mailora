@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using MYAcademy_IdentityEmailProject.Entities;
 using MYAcademy_IdentityEmailProject.Services;
 using MYAcademy_IdentityEmailProject.Models.Account;
@@ -11,6 +12,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
     [AllowAnonymous]
     public class RegisterController : Controller
     {
+        private const int MaxCodeAttempts = 5;   // 17.3: kod başına deneme hakkı (karar 6-A)
+
         private readonly UserManager<AppUser> _userManager;
         private readonly IMailService _mailService;
 
@@ -26,6 +29,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return View();
         }
 
+        [EnableRateLimiting(RateLimitPolicies.AuthMail)]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SignUp(UserRegisterViewModel userRegisterViewModel)
@@ -73,6 +77,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [EnableRateLimiting(RateLimitPolicies.Auth)]
         public async Task<IActionResult> ConfirmEmail(ConfirmEmailViewModel confirmEmailViewModel)
         {
             if (!ModelState.IsValid)
@@ -88,20 +93,57 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 return RedirectToAction("SignIn", "Login");
             }
 
-            if (user == null || user.ValidCode == null || user.ValidCode.ToString() != confirmEmailViewModel.Code)
+            if (user == null)
             {
                 ModelState.AddModelError(string.Empty, "Doğrulama kodu hatalı.");
                 return View(confirmEmailViewModel);
             }
 
-            user.EmailConfirmed = true;
-            user.ValidCode = null;
-            await _userManager.UpdateAsync(user);
+            // Hak bitmiş ya da kod hiç yok: karşılaştırma yapılmaz
+            if (user.ValidCode == null)
+            {
+                ModelState.AddModelError(string.Empty, "Geçerli bir doğrulama kodu yok. Lütfen yeni kod isteyin.");
+                return View(confirmEmailViewModel);
+            }
 
-            TempData["SuccessMessage"] = "Hesabınız doğrulandı. Artık giriş yapabilirsiniz.";
-            return RedirectToAction("SignIn", "Login");
+            // 17.3 (karar 6-A): her karşılaştırma bir hak harcar (Kavram 2)
+            bool correct = user.ValidCode.ToString() == confirmEmailViewModel.Code;
+            user.ValidCodeAttempts++;
+            bool burned = !correct && user.ValidCodeAttempts >= MaxCodeAttempts;
+
+            if (correct)
+            {
+                user.EmailConfirmed = true;
+                user.ValidCode = null;
+                user.ValidCodeAttempts = 0;
+            }
+            else if (burned)
+            {
+                user.ValidCode = null;          // kod yandı: tahmin için yeni kod istemek gerekir (o da AuthMail sınırında)
+                user.ValidCodeAttempts = 0;
+            }
+
+            // Sonuç ANCAK kayıt başarılıysa geçerli: ConcurrencyStamp paralel denemelerden yalnızca birini kaydeder (Kavram 2)
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+            {
+                ModelState.AddModelError(string.Empty, "İşlem tamamlanamadı. Lütfen tekrar deneyin.");
+                return View(confirmEmailViewModel);
+            }
+
+            if (correct)
+            {
+                TempData["SuccessMessage"] = "Hesabınız doğrulandı. Artık giriş yapabilirsiniz.";
+                return RedirectToAction("SignIn", "Login");
+            }
+
+            ModelState.AddModelError(string.Empty, burned
+                ? "Çok fazla hatalı deneme yapıldı. Bu kod artık geçersiz; lütfen yeni kod isteyin."
+                : $"Doğrulama kodu hatalı. Kalan deneme hakkı: {MaxCodeAttempts - user.ValidCodeAttempts}.");
+            return View(confirmEmailViewModel);
         }
 
+        [EnableRateLimiting(RateLimitPolicies.AuthMail)]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ResendCode(string email)
@@ -112,6 +154,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             {
                 int validCode = GenerateValidCode();
                 user.ValidCode = validCode;
+                user.ValidCodeAttempts = 0;   // 17.3: yeni kod, yeni haklar
                 await _userManager.UpdateAsync(user);
 
                 if (await TrySendValidCodeAsync(user.Email!, validCode))
@@ -123,6 +166,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return RedirectToAction("ConfirmEmail", new { email });
         }
 
+        [EnableRateLimiting(RateLimitPolicies.Lookup)]
         [HttpGet]
         public async Task<IActionResult> CheckUserName(string userName)
         {

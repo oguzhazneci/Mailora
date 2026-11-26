@@ -43,8 +43,8 @@ public sealed partial class SignedInClient(HttpClient http, TestUser user, strin
         return int.Parse(match.Groups[1].Value);
     }
 
-    // 12.16'daki uçla ek yükler (taslak yoksa oluşturur). Taslak ve ek Id'lerini döndürür.
-    public async Task<(int DraftId, int AttachmentId)> UploadAttachmentAsync(string fileName, byte[] content, int? draftId = null)
+    // Yanıtı olduğu gibi döndürür: 429 gibi başarısız yanıtları görmek için (17.5)
+    public async Task<HttpResponseMessage> PostAttachmentAsync(string fileName, byte[] content, int? draftId = null)
     {
         using var form = new MultipartFormDataContent();
         var file = new ByteArrayContent(content);
@@ -57,7 +57,13 @@ public sealed partial class SignedInClient(HttpClient http, TestUser user, strin
         }
         form.Add(new StringContent(token), "__RequestVerificationToken");
 
-        var response = await http.PostAsync("/Message/UploadAttachment", form, TestContext.Current.CancellationToken);
+        return await http.PostAsync("/Message/UploadAttachment", form, TestContext.Current.CancellationToken);
+    }
+
+    // 12.16'daki uçla ek yükler (taslak yoksa oluşturur). Taslak ve ek Id'lerini döndürür.
+    public async Task<(int DraftId, int AttachmentId)> UploadAttachmentAsync(string fileName, byte[] content, int? draftId = null)
+    {
+        var response = await PostAttachmentAsync(fileName, content, draftId);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);

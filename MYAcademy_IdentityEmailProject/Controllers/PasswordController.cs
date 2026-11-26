@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using MYAcademy_IdentityEmailProject.Entities;
 using MYAcademy_IdentityEmailProject.Models.Account;
@@ -34,6 +35,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.AuthMail)]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel forgotPasswordViewModel)
@@ -104,6 +106,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         }
 
         [AllowAnonymous]
+        [EnableRateLimiting(RateLimitPolicies.Auth)]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ResetPassword(ResetPasswordViewModel resetPasswordViewModel)

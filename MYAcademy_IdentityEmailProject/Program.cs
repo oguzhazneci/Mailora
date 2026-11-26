@@ -69,6 +69,8 @@ builder.Services.AddHostedService<OrphanAttachmentCleaner>();   // 12.19: sahips
 builder.Services.AddHostedService<TrashPurger>();             // 15.4: 30 günü dolan çöpü kalıcı siler
 builder.Services.AddSingleton(TimeProvider.System);           // 15.4: gerçek saat; testte değiştirilir (15.6)
 builder.Services.AddScoped<ITrashService, TrashService>();   // 15.3: kalıcı silme (controller + 15.4 arka plan servisi)
+builder.Services.AddMailoraRateLimiting(builder.Configuration);   // 17.2: istek sınırlama kuralları
+builder.Services.AddSingleton<ISendRateLimiter, SendRateLimiter>();   // 17.4: gönderme sınırı (action içinden, karar 7-B)
 
 // HTML temizleyici: izin listesindeki etiketleri bırakır, script ve olay özelliklerini siler.
 // Singleton: yapılandırması değiştirilmediği sürece bir örneğin paylaşılması güvenli.
@@ -113,6 +115,7 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();   // 17.2: UseRouting'den SONRA (belge), UseAuthentication'dan SONRA (kullanıcı başına kurallar, Kavram 4)
 
 app.MapStaticAssets();
 

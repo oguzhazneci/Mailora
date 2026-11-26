@@ -89,6 +89,9 @@ namespace MYAcademy_IdentityEmailProject.Migrations
                     b.Property<int?>("ValidCode")
                         .HasColumnType("int");
 
+                    b.Property<int>("ValidCodeAttempts")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")

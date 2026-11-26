@@ -9,5 +9,7 @@ namespace MYAcademy_IdentityEmailProject.Entities
         public string? Description { get; set; }
         public string? ImageUrl { get; set; }
         public int? ValidCode { get; set; }
+        // 17.3 (karar 6-A): bu kodla yapılan yanlış deneme sayısı. 5'te kod geçersiz olur.
+        public int ValidCodeAttempts { get; set; }
     }
 }
