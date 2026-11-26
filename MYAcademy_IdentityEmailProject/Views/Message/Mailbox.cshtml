@@ -395,7 +395,7 @@
                             var left = TrashRules.ExpiresAt(deleted) - Clock.GetLocalNow().DateTime;
                             if (left.TotalDays <= TrashRules.WarningDays)
                             {
-                                int days = (int)Math.Ceiling(left.TotalDays);
+                                int days = (int)Math.Floor(left.TotalDays);   // aşağı: kullanıcıya gerçek süreden FAZLA söz verme
                                 <span class="purge-badge" data-purge-days="@days" title="Çöpe taşınma: @deleted.ToString("d MMMM yyyy HH:mm", Tr)">
                                     <i class="bi bi-hourglass-split"></i>
                                     @(days <= 1 ? "24 saat içinde kalıcı olarak silinecek" : $"{days} gün içinde kalıcı olarak silinecek")

@@ -116,7 +116,7 @@ public partial class TrashTests(MailoraAppFactory factory)
         var ownerUser = await factory.CreateUserAsync("owner");
         int soon = await InboxCopyAsync(ownerUser, await sender.SendMessageAsync("Yakında", ownerUser.Email));
         int later = await InboxCopyAsync(ownerUser, await sender.SendMessageAsync("Sonra", ownerUser.Email));
-        await SetDeletedAsync(soon, Now.AddDays(-28));    // 2 gün kaldı → rozet
+        await SetDeletedAsync(soon, Now.AddDays(-28).AddHours(-12));   // 1,5 gün kaldı → rozet (Floor: 1)
         await SetDeletedAsync(later, Now.AddDays(-26));   // 4 gün kaldı → rozet yok (WarningDays = 3)
 
         var owner = await factory.SignInAsync(ownerUser);
@@ -128,7 +128,7 @@ public partial class TrashTests(MailoraAppFactory factory)
 
         // Sayfadaki TEK rozet, 2 gün diyor
         var badges = PurgeBadge().Matches(html).Select(m => m.Groups[1].Value);
-        Assert.Equal(["2"], badges);
+        Assert.Equal(["1"], badges);   // Ceiling olsaydı "2": kullanıcıya fazla süre söylerdi
     }
 
     [Fact]
