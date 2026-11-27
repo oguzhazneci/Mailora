@@ -106,6 +106,26 @@ public class RateLimitingTests(MailoraAppFactory factory)
         await sender.SendMessageAsync("Gecerli", recipient.Email);
     }
 
+    [Fact]
+    public async Task SaveDraft_DoesNotUseASendPermit()
+    {
+        await using var app = WithLimits(("UserSend:PermitLimit", "1"));
+        var sender = await app.SignInNewUserAsync("draft");
+        var recipient = await app.CreateUserAsync("rcpt");
+
+        // Taslak gönderim değildir: sınır 1 iken iki kez kaydedilebilmeli (20.4)
+        for (int i = 0; i < 2; i++)
+        {
+            var saved = await sender.PostFormAsync("/Message/CreateMessage",
+                ("To", recipient.Email), ("Cc", ""), ("Bcc", ""), ("CategoryId", "1"),
+                ("Subject", $"Taslak {i}"), ("Body", "<p>Yarım kaldı</p>"), ("intent", "draft"));
+            Assert.Equal(HttpStatusCode.Redirect, saved.StatusCode);   // kaydedildi, taslağa yönlendirdi
+        }
+
+        // Tek gönderim hakkı hâlâ duruyor (yardımcı yönlendirmeyi kendisi doğrular)
+        await sender.SendMessageAsync("Gecerli", recipient.Email);
+    }
+
     /* ---------- Doğrulama kodunun deneme hakkı (17.3, karar 6-A) ---------- */
 
     [Fact]

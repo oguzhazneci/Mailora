@@ -650,7 +650,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
 
             // 17.4 (karar 7-B): Gönderme sınırı. Sadece diğer kontrollerden geçen istek hak harcar (Kavram 3).
             // Reddedilirse aşağıdaki "geçersiz" yol formu alıcılar, gövde ve eklerle geri doldurur: mesaj kaybolmaz.
-            if (ModelState.IsValid)
+            // 20.4: Taslak kaydı gönderim değildir, hak harcamaz. Zamanlama harcar (arka plandaki gönderim tekrar saymaz).
+            if (ModelState.IsValid && !isDraft)
             {
                 string? limitError = await _sendLimiter.TryAcquireAsync(_userManager.GetUserId(User)!, HttpContext.RequestAborted);
                 if (limitError != null)
