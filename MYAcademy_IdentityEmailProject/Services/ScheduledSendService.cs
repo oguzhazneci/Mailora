@@ -60,8 +60,8 @@ namespace MYAcademy_IdentityEmailProject.Services
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // Sahiplenilmişse mesaj Draft'ta kaldı: kullanıcının Taslaklar'ında görünür (Kavram 2)
-                    _logger.LogError(ex, "Zamanlanmış mesaj gönderilemedi; taslak olarak bırakıldı. MessageId: {MessageId}", messageId);
+                    // Hata gönderimden önceyse mesaj Draft'ta kaldı; sonraysa gönderildi. Tekrar denenmez: çift gönderim riski (18.5)
+                    _logger.LogError(ex, "Zamanlanmış gönderimde hata; mesajın durumu kontrol edilmeli (Taslaklar ya da Gönderilenler). MessageId: {MessageId}", messageId);
                 }
                 finally
                 {

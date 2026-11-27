@@ -31,7 +31,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
               .Concat(Bcc.Select(e => (e, RecipientType.Bcc)));
 
         /* Ayrıştır + TEKİLLEŞTİR (karar 3-A, Kavram 3):
-           - Büyük/küçük harf farkı yok sayılır (Ada@... = ada@...)
+           - Büyük/küçük harf farkı yok sayılır (Umut@... = umut@...)
            - Bir adres birden çok alandaysa ÖNCELİKLİ alanda kalır: Kime > Bilgi > Gizli
              (alanlar bu sırayla işlendiği için "ilk gören alır")
            Tekilleştirme zorunlu: aynı kullanıcıya iki Gelen kopyası benzersiz indeksi ihlal eder (5.3). */

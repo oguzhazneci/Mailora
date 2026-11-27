@@ -11,7 +11,7 @@ public class RecipientListTests
     [Fact]
     public void Parse_SameAddressInToAndCc_KeepsOnlyInTo()
     {
-        var list = RecipientList.Parse("ada@mailora.test", "ADA@mailora.test", null);
+        var list = RecipientList.Parse("umut@mailora.test", "UMUT@mailora.test", null);
 
         Assert.Single(list.To);
         Assert.Empty(list.Cc);
@@ -20,7 +20,7 @@ public class RecipientListTests
     [Fact]
     public void Parse_SameAddressInCcAndBcc_KeepsOnlyInCc()
     {
-        var list = RecipientList.Parse(null, "ada@mailora.test", "ada@mailora.test");
+        var list = RecipientList.Parse(null, "umut@mailora.test", "umut@mailora.test");
 
         Assert.Single(list.Cc);
         Assert.Empty(list.Bcc);   // Gizli'ye düşseydi "Bilgi'de görünen kişi aynı zamanda gizli" olurdu (12.11.d, soru 3)
@@ -31,11 +31,11 @@ public class RecipientListTests
     [Fact]
     public void Parse_DuplicateInSameField_KeepsFirstSpelling()
     {
-        var list = RecipientList.Parse("ada@mailora.test, Ada@Mailora.Test", null, null);
+        var list = RecipientList.Parse("umut@mailora.test, Umut@Mailora.Test", null, null);
 
         // Assert.Single tek elemanı DÖNDÜRÜR: hem "tek" hem "şu" tek satırda
         string only = Assert.Single(list.To);
-        Assert.Equal("ada@mailora.test", only);
+        Assert.Equal("umut@mailora.test", only);
     }
 
     /* ---------- Kural 3: ayırıcılar ve boş parçalar ---------- */
@@ -96,7 +96,7 @@ public class RecipientListTests
     /* ---------- Kural 7: adres biçimi (istemcideki EMAIL_RE ile aynı kural) ---------- */
 
     [Theory]
-    [InlineData("ada@mailora.test")]
+    [InlineData("umut@mailora.test")]
     [InlineData("ada.yilmaz+is@alt.ornek.com")]
     [InlineData("x@y.co")]
     public void IsValidAddress_WellFormedAddress_ReturnsTrue(string address)
@@ -106,16 +106,16 @@ public class RecipientListTests
 
     [Theory]
     [InlineData("")]                        // boş
-    [InlineData("ada")]                     // @ yok
-    [InlineData("ada@")]                    // alan adı yok
+    [InlineData("umut")]                    // @ yok
+    [InlineData("umut@")]                    // alan adı yok
     [InlineData("@mailora.test")]           // kullanıcı kısmı yok
-    [InlineData("ada@mailora")]             // noktalı alan adı yok
-    [InlineData("ada@mailora.t")]           // uzantı tek harf
-    [InlineData("ada @mailora.test")]       // boşluk
-    [InlineData("ada@@mailora.test")]       // iki @
+    [InlineData("umut@mailora")]             // noktalı alan adı yok
+    [InlineData("umut@mailora.t")]           // uzantı tek harf
+    [InlineData("umut @mailora.test")]      // boşluk
+    [InlineData("umut@@mailora.test")]       // iki @
     [InlineData("a<b@mailora.test")]        // yasak karakter
-    [InlineData("ada@mailora.test;")]       // sonda ayırıcı
-    [InlineData("\"ada\"@mailora.test")]    // tırnak
+    [InlineData("umut@mailora.test;")]       // sonda ayırıcı
+    [InlineData("\"umut\"@mailora.test")]    // tırnak
     public void IsValidAddress_MalformedAddress_ReturnsFalse(string address)
     {
         Assert.False(RecipientList.IsValidAddress(address));

@@ -9,7 +9,7 @@ public class RecipientViewTests
     /* ---------- Senaryo (Kavram 1) ----------
        ada gönderiyor.  Kime: ued, kaan   Bilgi: baris   Gizli: can, deniz */
     private const string Ada = "u-ada", Ued = "u-ued", Kaan = "u-kaan", Baris = "u-baris", Can = "u-can", Deniz = "u-deniz";
-    private const string AdaEmail = "ada@mailora.test";
+    private const string UmutEmail = "umut@mailora.test";
 
     private static Message GroupMessage() => Build(Ada,
         ("ued@mailora.test", Ued, RecipientType.To),
@@ -106,18 +106,18 @@ public class RecipientViewTests
     [Fact]
     public void Reply_FromToRecipient_GoesOnlyToSender()
     {
-        var targets = RecipientView.For(GroupMessage(), Ued).GetReplyTargets(AdaEmail, all: false);
+        var targets = RecipientView.For(GroupMessage(), Ued).GetReplyTargets(UmutEmail, all: false);
 
-        Assert.Equal(new[] { AdaEmail }, targets.To);
+        Assert.Equal(new[] { UmutEmail }, targets.To);
         Assert.Empty(targets.Cc);
     }
 
     [Fact]
     public void ReplyAll_FromToRecipient_IncludesOthersButNeverSelfOrBcc()
     {
-        var targets = RecipientView.For(GroupMessage(), Ued).GetReplyTargets(AdaEmail, all: true);
+        var targets = RecipientView.For(GroupMessage(), Ued).GetReplyTargets(UmutEmail, all: true);
 
-        Assert.Equal(new[] { AdaEmail, "kaan@mailora.test" }, targets.To);   // gönderen önce, kendisi yok
+        Assert.Equal(new[] { UmutEmail, "kaan@mailora.test" }, targets.To);   // gönderen önce, kendisi yok
         Assert.Equal(new[] { "baris@mailora.test" }, targets.Cc);
 
         var everyone = targets.To.Concat(targets.Cc).ToList();
@@ -129,16 +129,16 @@ public class RecipientViewTests
     public void ReplyAll_FromBccRecipient_FallsBackToPlainReply()
     {
         // URL'ye replyAll=true elle yazılsa bile (12.12.b Deney 5)
-        var targets = RecipientView.For(GroupMessage(), Can).GetReplyTargets(AdaEmail, all: true);
+        var targets = RecipientView.For(GroupMessage(), Can).GetReplyTargets(UmutEmail, all: true);
 
-        Assert.Equal(new[] { AdaEmail }, targets.To);
+        Assert.Equal(new[] { UmutEmail }, targets.To);
         Assert.Empty(targets.Cc);
     }
 
     [Fact]
     public void Reply_FromSender_GoesToAllToRecipients()
     {
-        var targets = RecipientView.For(GroupMessage(), Ada).GetReplyTargets(AdaEmail, all: false);
+        var targets = RecipientView.For(GroupMessage(), Ada).GetReplyTargets(UmutEmail, all: false);
 
         Assert.Equal(new[] { "ued@mailora.test", "kaan@mailora.test" }, targets.To);
         Assert.Empty(targets.Cc);
@@ -148,7 +148,7 @@ public class RecipientViewTests
     public void ReplyAll_FromSender_AddsCcButNeverBcc()
     {
         // Gönderen Gizli listeyi GÖRÜR ama yanıta TAŞIYAMAZ: yanıtı yeni alıcılar okur (12.12.d, soru 2)
-        var targets = RecipientView.For(GroupMessage(), Ada).GetReplyTargets(AdaEmail, all: true);
+        var targets = RecipientView.For(GroupMessage(), Ada).GetReplyTargets(UmutEmail, all: true);
 
         Assert.Equal(new[] { "baris@mailora.test" }, targets.Cc);
         Assert.DoesNotContain("can@mailora.test", targets.To.Concat(targets.Cc));
@@ -159,12 +159,12 @@ public class RecipientViewTests
     {
         // ada kendini de Kime'ye yazmış (büyük harfle). ued Tümünü Yanıtla diyor (12.12.d, soru 3).
         var message = Build(Ada,
-            ("ADA@MAILORA.TEST", Ada, RecipientType.To),
+            ("UMUT@MAILORA.TEST", Ada, RecipientType.To),
             ("ued@mailora.test", Ued, RecipientType.To));
 
-        var targets = RecipientView.For(message, Ued).GetReplyTargets(AdaEmail, all: true);
+        var targets = RecipientView.For(message, Ued).GetReplyTargets(UmutEmail, all: true);
 
-        Assert.Equal(new[] { AdaEmail }, targets.To);
+        Assert.Equal(new[] { UmutEmail }, targets.To);
     }
 
     /* ---------- Tümünü Yanıtla butonu ne zaman görünür? ---------- */
@@ -172,13 +172,13 @@ public class RecipientViewTests
     [Fact]
     public void CanReplyAll_ToRecipientInGroup_IsTrue()
     {
-        Assert.True(RecipientView.For(GroupMessage(), Ued).CanReplyAll(AdaEmail));
+        Assert.True(RecipientView.For(GroupMessage(), Ued).CanReplyAll(UmutEmail));
     }
 
     [Fact]
     public void CanReplyAll_BccRecipient_IsFalse()
     {
-        Assert.False(RecipientView.For(GroupMessage(), Can).CanReplyAll(AdaEmail));
+        Assert.False(RecipientView.For(GroupMessage(), Can).CanReplyAll(UmutEmail));
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public class RecipientViewTests
     {
         var message = Build(Ada, ("ued@mailora.test", Ued, RecipientType.To));
 
-        Assert.False(RecipientView.For(message, Ued).CanReplyAll(AdaEmail));
+        Assert.False(RecipientView.For(message, Ued).CanReplyAll(UmutEmail));
     }
 
     [Fact]
@@ -197,6 +197,6 @@ public class RecipientViewTests
             ("ued@mailora.test", Ued, RecipientType.To),
             ("kaan@mailora.test", Kaan, RecipientType.To));
 
-        Assert.False(RecipientView.For(message, Ada).CanReplyAll(AdaEmail));
+        Assert.False(RecipientView.For(message, Ada).CanReplyAll(UmutEmail));
     }
 }

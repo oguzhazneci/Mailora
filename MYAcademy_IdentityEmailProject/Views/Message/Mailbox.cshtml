@@ -354,6 +354,9 @@
                 var msg = item.Message;                          // içerik (herkes için aynı)
                 var who = Counterpart(item);                     // gönderen ya da alıcı (9.3)
                 var sentDate = msg.SentDate ?? msg.ScheduledFor ?? msg.UpdatedDate;   // 18.3: zamanlanmışta gönderim zamanı
+                // 20.1: çöpteki, zamanı geçmiş zamanlanmış mesaj geri alınırsa hemen gönderilir → onay istenir
+                bool sendsOnRestore = Model.IsTrash && item.Folder == MailFolder.Scheduled
+                                      && msg.ScheduledFor <= Clock.GetLocalNow().DateTime;
                 // Taslak satırı düzenleme sayfasını açar; çöpteki taslak ise sadece görüntülenir (9.6)
                 var detailUrl = item.Folder == MailFolder.Draft && item.DeletedDate == null
                     ? Url.Action("CreateMessage", "Message", new { draftId = msg.MessageId })
@@ -361,6 +364,7 @@
 
                 <article class="msg-item @(item.IsRead ? "" : "unread")"
                          data-id="@item.MailboxItemId"
+                         data-send-on-restore="@(sendsOnRestore ? "true" : null)"
                          data-href="@detailUrl"
                          tabindex="0" title="Mesajı aç">
                     <div class="lead">
@@ -599,6 +603,9 @@
                         });
                         if (!rows().length) setTimeout(() => location.reload(), 5200);
                     } else if (btn.dataset.bulk === 'restore') {
+                        // 20.1: zamanı geçmiş zamanlanmış mesaj geri alınınca HEMEN gönderilir: geri alınamaz işlem → onay
+                        const sendNow = ids.filter(id => rowById(id)?.dataset.sendOnRestore).length;
+                        if (sendNow && !confirm(`Seçili mesajlardan ${sendNow} tanesinin gönderim zamanı geçti. Geri alırsanız hemen gönderilecek. Devam edilsin mi?`)) return;
                         // Çöp Kutusu → mesajlar geldikleri klasöre döner (Folder hiç değişmemişti)
                         const result = await Mailora.post(bar.dataset.restoreUrl, { ids });
                         ids.forEach(id => rowById(id)?.remove());
