@@ -27,7 +27,7 @@
                             <i class="bi bi-123 lead"></i>
                             <input asp-for="Code" id="tfCode" class="pf-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456">
                         </div>
-                        <div class="pf-error"><span asp-validation-for="Code"></span></div>
+                        <span asp-validation-for="Code" class="pf-error"></span>
                     </div>
                     <button type="submit" class="btn-send" style="margin-top:10px"><i class="bi bi-shield-check"></i> Doğrula ve aç</button>
                 </form>

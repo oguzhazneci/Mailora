@@ -1006,6 +1006,10 @@
     .pf-error { font-size: 12px; font-weight: 500; color: #C2476B; margin-top: 6px; }
     .pf-error:empty { display: none; }
     .pf-error::before { content: "\F33A"; font-family: "bootstrap-icons"; margin-right: 6px; }
+            span.pf-error {
+                display: block;
+            }
+            /* 20.5: span olarak da blok; boşken :empty kuralı gizler */
     .pf-field.has-error .pf-input { border-color: #F0B6C8; background: #FFF8FA; }
     .pf-field.has-error label { color: #C2476B; }
     .pf-field.has-error .pf-hint { display: none; }

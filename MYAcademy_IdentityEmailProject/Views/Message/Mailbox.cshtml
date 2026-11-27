@@ -188,6 +188,8 @@
         font-size: 13px;
     }
 
+    .star-placeholder { visibility: hidden; pointer-events: none; }
+    
     .purge-badge {
         display: inline-flex;
         align-items: center;
@@ -378,6 +380,11 @@
                                 <i class="bi @(item.IsStarred ? "bi-star-fill" : "bi-star")"></i>
                             </button>
                         }
+                        else
+                        {
+                            @* 20.5: Yıldızsız satır da aynı genişlikte kalsın; yoksa sütunlar kayar *@
+                            <span class="star-btn star-placeholder" aria-hidden="true"><i class="bi bi-star"></i></span>
+                        }
                     </div>
                     <partial name="_Avatar" model="new AvatarViewModel(who.Name, who.Key, who.Photo)" />
                     <div class="mi-sender">
@@ -402,7 +409,7 @@
                                 int days = (int)Math.Floor(left.TotalDays);   // aşağı: kullanıcıya gerçek süreden FAZLA söz verme
                                 <span class="purge-badge" data-purge-days="@days" title="Çöpe taşınma: @deleted.ToString("d MMMM yyyy HH:mm", Tr)">
                                     <i class="bi bi-hourglass-split"></i>
-                                    @(days <= 1 ? "24 saat içinde kalıcı olarak silinecek" : $"{days} gün içinde kalıcı olarak silinecek")
+                                    @(days < 1 ? "24 saat içinde kalıcı olarak silinecek" : $"{days} gün içinde kalıcı olarak silinecek")
                                 </span>
                             }
                         }
@@ -421,6 +428,8 @@
                     {
                         <i class="bi bi-clock att-ic" title="Zamanlanmış gönderim" aria-label="Zamanlanmış gönderim"></i>
                     }
+
+                    @* Ek var mı? (12.17) Kategori etiketinden önce, sabit bir konumda *@
                     <span class="time" title="@(sentDate.ToString("d MMMM yyyy, dddd HH:mm", Tr))">@ShortTime(sentDate)</span>
                 </article>
             }
