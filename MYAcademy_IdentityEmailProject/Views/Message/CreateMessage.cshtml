@@ -4,6 +4,8 @@
 @using Microsoft.AspNetCore.Mvc.Rendering
 @using MYAcademy_IdentityEmailProject.Services
 @using MYAcademy_IdentityEmailProject.Helpers
+@using System.Globalization
+@inject TimeProvider Clock
 @{
     // Taslak düzenleniyorsa aynı sayfa "Taslağı Düzenle" olur (9.6)
     bool isDraftEdit = Model.DraftId.HasValue;
@@ -23,6 +25,12 @@
     string ErrClass(string key) => ViewData.ModelState.TryGetValue(key, out var e) && e.Errors.Count > 0 ? "has-error" : "";
     string? ErrText(string key) => ViewData.ModelState.TryGetValue(key, out var e) ? e.Errors.FirstOrDefault()?.ErrorMessage : null;
     var generalError = ErrText(string.Empty);   // ModelState.AddModelError("", "...") ile eklenen genel hata
+
+    // 18.4: Zamanla paneli. Sınırlar sunucudaki ValidateSchedule ile aynı saatten (TimeProvider)
+    var scheduleNow = Clock.GetLocalNow().DateTime;
+    string scheduleMin = scheduleNow.AddMinutes(2).ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+    string scheduleMax = scheduleNow.AddDays(365).ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+    bool scheduleOpen = Model.ScheduledFor.HasValue || ErrText(nameof(Model.ScheduledFor)) != null;   // hata ya da seçim varsa açık gelir
 }
 
 <style>
@@ -172,6 +180,46 @@
     .att-item.forwarded {
         border-style: dashed;
     }
+
+    /* Zamanla paneli (18.4) */
+    .cmp-schedule {
+        padding: 12px 20px;
+        border-top: 1px solid var(--border, #ECEAF5);
+        background: #FAF9FE;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .cmp-schedule[hidden] {
+            display: none;
+        }
+
+        .cmp-schedule .ttl {
+            font-weight: 600;
+            font-size: .85rem;
+            color: #5D6075;
+            margin-right: 4px;
+        }
+
+        .cmp-schedule input[type="datetime-local"] {
+            border: 1px solid var(--border, #ECEAF5);
+            border-radius: 10px;
+            padding: 6px 10px;
+            font: inherit;
+            background: #fff;
+        }
+
+        .cmp-schedule.has-error input[type="datetime-local"] {
+            border-color: #C2476B;
+        }
+
+        .cmp-schedule .cmp-err {
+            flex-basis: 100%;
+            color: #C2476B;
+            font-size: .8rem;
+        }
 </style>
 
 <section class="compose" id="compose">
@@ -361,10 +409,22 @@
             </div>
         </div>
 
+        <!-- Zamanla paneli (18.4). Gönderim zamanı seçilir; "Zamanla" butonu intent=schedule gönderir. -->
+        <div class="cmp-schedule @ErrClass(nameof(Model.ScheduledFor))" id="rowSchedule" hidden="@(!scheduleOpen)">
+            <span class="ttl"><i class="bi bi-clock"></i> Gönderim zamanı</span>
+            <button type="button" class="btn-soft" data-quick="tomorrow">Yarın 09:00</button>
+            <button type="button" class="btn-soft" data-quick="monday">Pazartesi 09:00</button>
+            <input asp-for="ScheduledFor" id="cmpScheduleAt" type="datetime-local" asp-format="{0:yyyy-MM-ddTHH:mm}"
+                   min="@scheduleMin" max="@scheduleMax" aria-label="Gönderim tarihi ve saati">
+            <button type="submit" class="btn-send" id="cmpSchedule" name="intent" value="schedule"><span class="lbl"><i class="bi bi-clock-fill"></i> Zamanla</span></button>
+            <div class="cmp-err">@ErrText(nameof(Model.ScheduledFor))</div>
+        </div>
+
         <!-- Alt işlem çubuğu -->
         <div class="cmp-actions">
             @* İki gönder butonu, tek form: hangi butona basıldığı "intent" değeriyle sunucuya gider (9.6) *@
             <button type="submit" class="btn-send" id="cmpSend" name="intent" value="send"><span class="lbl"><i class="bi bi-send-fill"></i> Mesajı Gönder</span></button>
+            <button type="button" class="btn-soft" id="cmpScheduleToggle" aria-controls="rowSchedule" aria-expanded="@(scheduleOpen ? "true" : "false")"><i class="bi bi-clock"></i> Zamanla</button>
             <button type="submit" class="btn-soft" id="cmpDraft" name="intent" value="draft"><span class="lbl"><i class="bi bi-file-earmark-text"></i> Taslak Olarak Kaydet</span></button>
             <button type="button" class="btn-soft danger" id="cmpClear"><i class="bi bi-x-circle"></i> Temizle</button>
             <span class="cmp-hint"><span class="kbd-s">Ctrl</span> + <span class="kbd-s">Enter</span> ile gönder</span>
@@ -400,7 +460,7 @@
 
             // Sunucudaki kurallar ve mesajlar (CreateMessageViewModel) — iki tarafta aynı metin
             const RULES = { emailMax: 256, subjectMax: 200, bodyMax: 100000, maxRecipients: 20 };   // RecipientList ile aynı
-            let savingDraft = false;   // durum metni: "Gönderiliyor…" mi "Kaydediliyor…" mu
+            let busyText = 'Gönderiliyor…';   // durum metni: gönder / kaydet / zamanla (18.4)
             const MSG = {
                 toRequired: 'En az bir alıcı girin.',
                 toTooMany: n => `Bir mesaj en fazla 20 alıcıya gönderilebilir (şu an ${n}).`,
@@ -429,7 +489,7 @@
                 const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML);
                 const state = sending ? 'saving' : empty ? 'empty' : 'dirty';
                 el.dataset.state = state;
-                $('.stext', el).textContent = { empty: 'Yeni mesaj', dirty: 'Gönderilmedi', saving: savingDraft ? 'Kaydediliyor…' : 'Gönderiliyor…' }[state];
+                $('.stext', el).textContent = { empty: 'Yeni mesaj', dirty: 'Gönderilmedi', saving: busyText }[state];
             }
             function markDirty() { dirty = true; updateStatus(); }
 
@@ -676,9 +736,9 @@
             subject.addEventListener('input', () => { clearFieldError($('#rowSubject')); markDirty(); });
             subject.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); editor.focus(); } });
 
-                        /* --- Ekler (12.16): seçilen dosya HEMEN yüklenir ve taslağa bağlanır (karar 2-A) ---
-               Yüklemeler SIRAYLA yapılır: ilk istek (gerekirse) taslağı oluşturur,
-               sonrakiler dönen draftId'yi kullanır (Kavram 3). */
+            /* --- Ekler (12.16): seçilen dosya HEMEN yüklenir ve taslağa bağlanır (karar 2-A) ---
+        Yüklemeler SIRAYLA yapılır: ilk istek (gerekirse) taslağı oluşturur,
+        sonrakiler dönen draftId'yi kullanır (Kavram 3). */
             const attach = $('#cmpAttach'), attList = $('#attList'), attInput = $('#attInput');
             const draftIdInput = $('input[name="DraftId"]', form);
             const token = $('input[name="__RequestVerificationToken"]', form).value;
@@ -707,7 +767,7 @@
                 li.className = 'att-item';
                 li.dataset.size = size;
                 li.innerHTML = '<i class="bi bi-paperclip"></i><span class="n"></span><span class="s"></span>' +
-                               '<button type="button" class="x"><i class="bi bi-x"></i></button>';
+                    '<button type="button" class="x"><i class="bi bi-x"></i></button>';
                 const n = $('.n', li);
                 n.textContent = name;                // kullanıcı verisi: textContent (Kavram 5)
                 n.title = name;
@@ -793,6 +853,43 @@
 
             $('#attBar').hidden = false;             // JS çalışıyor: ek çubuğunu göster (Kavram 6)
 
+            /* --- Zamanla (18.4) ---
+               Hazır seçenekler tarayıcının saatiyle hesaplanır; asıl kontrol sunucuda (ValidateSchedule). */
+            const schedulePanel = $('#rowSchedule'), scheduleAt = $('#cmpScheduleAt'), scheduleToggle = $('#cmpScheduleToggle');
+            const pad = n => String(n).padStart(2, '0');
+            const toLocalInput = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+            scheduleToggle.addEventListener('click', () => {
+                schedulePanel.hidden = !schedulePanel.hidden;
+                scheduleToggle.setAttribute('aria-expanded', String(!schedulePanel.hidden));
+                if (!schedulePanel.hidden) scheduleAt.focus();
+            });
+
+            schedulePanel.addEventListener('click', e => {
+                const quick = e.target.closest('[data-quick]')?.dataset.quick;
+                if (!quick) return;
+                const d = new Date();
+                d.setHours(9, 0, 0, 0);
+                if (quick === 'tomorrow') d.setDate(d.getDate() + 1);
+                else d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));   // bir sonraki pazartesi (bugün pazartesiyse haftaya)
+                scheduleAt.value = toLocalInput(d);
+                clearFieldError(schedulePanel); markDirty();
+            });
+            scheduleAt.addEventListener('input', () => { clearFieldError(schedulePanel); markDirty(); });
+
+            // Sunucudaki ValidateSchedule ile aynı metinler (üst sınırı input'un max'ı zaten engelliyor)
+            function validateSchedule() {
+                if (!scheduleAt.value) {
+                    setFieldError(schedulePanel, 'Gönderim tarihini ve saatini seçin.');
+                } else if (new Date(scheduleAt.value).getTime() < Date.now() + 60_000) {
+                    setFieldError(schedulePanel, 'Gönderim zamanı en az 1 dakika sonrası olmalı.');
+                } else {
+                    return true;
+                }
+                scheduleAt.focus();
+                return false;
+            }
+
             /* --- Doğrulama & gönderim --- */
             function validate() {
                 let first = null;
@@ -828,8 +925,8 @@
             function validateDraft() {
                 let first = null;
                 const fail = (row, msg, el) => { setFieldError(row, msg); if (!first) first = el; };
-                                const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML)
-                              && attachmentCount() === 0;   // 12.16: sadece eki olan taslak boş değildir
+                const empty = recipientCount() === 0 && !category.value && !subject.value.trim() && !textOf(editor.innerHTML)
+                    && attachmentCount() === 0;   // 12.16: sadece eki olan taslak boş değildir
 
                 if (empty) { showToast(MSG.draftEmpty, 'bi-info-circle'); return false; }
                 if (recipientCount() > RULES.maxRecipients) fail(fields.To.row, MSG.toTooMany(recipientCount()), fields.To.input);
@@ -857,21 +954,25 @@
                 }
 
                 // Hangi buton? Ctrl+Enter (requestSubmit) butonsuz gönderir → "send" sayılır.
-                const isDraft = e.submitter?.value === 'draft';
-                const ok = isDraft ? validateDraft() : validate();
+                const intent = e.submitter?.value ?? 'send';
+                const isDraft = intent === 'draft';
+                // 18.4: zamanlama, gönderimin TAM kurallarıyla doğrulanır + zaman kontrolü
+                const ok = isDraft ? validateDraft() : (validate() && (intent !== 'schedule' || validateSchedule()));
                 if (!ok) {
                     e.preventDefault();
                     if (!isDraft) showToast('Lütfen işaretli alanları kontrol edin.', 'bi-exclamation-circle');
                     return;
                 }
 
-                sending = true; dirty = false; savingDraft = isDraft;
+                const BUSY = { send: ['#cmpSend', 'Gönderiliyor…'], draft: ['#cmpDraft', 'Kaydediliyor…'], schedule: ['#cmpSchedule', 'Zamanlanıyor…'] };
+                const [btnId, label] = BUSY[intent] ?? BUSY.send;
+                sending = true; dirty = false; busyText = label;
                 // Butonu "disabled" YAPMIYORUZ: disabled bir buton forma eklenmez ve intent değeri kaybolur.
                 // Çift tıklamayı "sending" bayrağı engelliyor; buton sadece görsel olarak meşgul gösteriliyor.
-                const btn = isDraft ? $('#cmpDraft') : $('#cmpSend');
+                const btn = $(btnId);
                 btn.setAttribute('aria-busy', 'true');
                 btn.style.pointerEvents = 'none';
-                $('.lbl', btn).innerHTML = `<span class="spin"></span> ${isDraft ? 'Kaydediliyor…' : 'Gönderiliyor…'}`;
+                $('.lbl', btn).innerHTML = `<span class="spin"></span> ${label}`;
                 updateStatus();
                 // Form normal şekilde POST edilir → MessageController.CreateMessage(model, intent)
             });
@@ -892,6 +993,7 @@
                 if (act === 'ok') {
                     Object.values(fields).forEach(f => { f.clear(); clearFieldError(f.row); });
                     category.value = ''; subject.value = ''; editor.innerHTML = '';
+                    scheduleAt.value = ''; schedulePanel.hidden = true; clearFieldError(schedulePanel);   // 18.4
                     syncContent(); syncCategory(); updateCounter();
                     ['#rowCategory', '#rowSubject', '#rowBody'].forEach(s => clearFieldError($(s)));
                     dirty = false; savedRange = null;

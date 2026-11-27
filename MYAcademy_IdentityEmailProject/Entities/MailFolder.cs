@@ -5,6 +5,7 @@
     {
         Inbox = 1,
         Sent = 2,
-        Draft = 3
+        Draft = 3,
+        Scheduled = 4
     }
 }

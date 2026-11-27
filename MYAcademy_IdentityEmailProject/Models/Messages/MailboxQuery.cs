@@ -1,8 +1,7 @@
 ﻿namespace MYAcademy_IdentityEmailProject.Models.Messages
 {
     // Hangi liste? Kullanıcıdan gelmez; her action kendi görünümünü sabit verir (9.2).
-    public enum MailboxView { Inbox, Sent, Starred, Drafts, Trash, Archive }
-
+    public enum MailboxView { Inbox, Sent, Starred, Drafts, Trash, Archive, Scheduled }
     // Durum çipleri
     public enum MailboxFilter { All, Unread, Starred }
 

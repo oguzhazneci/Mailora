@@ -353,7 +353,7 @@
             {
                 var msg = item.Message;                          // içerik (herkes için aynı)
                 var who = Counterpart(item);                     // gönderen ya da alıcı (9.3)
-                var sentDate = msg.SentDate ?? msg.UpdatedDate;
+                var sentDate = msg.SentDate ?? msg.ScheduledFor ?? msg.UpdatedDate;   // 18.3: zamanlanmışta gönderim zamanı
                 // Taslak satırı düzenleme sayfasını açar; çöpteki taslak ise sadece görüntülenir (9.6)
                 var detailUrl = item.Folder == MailFolder.Draft && item.DeletedDate == null
                     ? Url.Action("CreateMessage", "Message", new { draftId = msg.MessageId })
@@ -367,7 +367,7 @@
                         <input type="checkbox" class="m-check row-check" aria-label="Seç">
                         @* item = benim kopyam: yıldız bilgisi kişiye özel (layout'taki dinleyici, 7.6).
                            Taslaklarda yıldız yok (9.1, karar 2-A) — Çöp Kutusu'ndaki taslaklar dahil. *@
-                        @if (item.Folder != MailFolder.Draft)
+                        @if (item.Folder is not (MailFolder.Draft or MailFolder.Scheduled))
                         {
                             <button class="star-btn @(item.IsStarred ? "on" : "")" type="button" data-star data-id="@item.MailboxItemId"
                                     aria-label="@(item.IsStarred ? "Yıldızı kaldır" : "Yıldızla")">
@@ -413,6 +413,10 @@
                             <span class="tag" style="color:@msg.Category.ColorCode;background:color-mix(in srgb, @msg.Category.ColorCode 14%, white)">@msg.Category.CategoryName</span>
                         }
                     </div>
+                    @if (item.Folder == MailFolder.Scheduled)
+                    {
+                        <i class="bi bi-clock att-ic" title="Zamanlanmış gönderim" aria-label="Zamanlanmış gönderim"></i>
+                    }
                     <span class="time" title="@(sentDate.ToString("d MMMM yyyy, dddd HH:mm", Tr))">@ShortTime(sentDate)</span>
                 </article>
             }

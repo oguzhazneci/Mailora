@@ -69,6 +69,9 @@ public sealed class MailoraAppFactory : WebApplicationFactory<Program>, IAsyncLi
             var purger = services.Single(d => d.ImplementationType == typeof(TrashPurger));   // 15.6
             services.Remove(purger);
 
+            var scheduledSender = services.Single(d => d.ImplementationType == typeof(ScheduledSender));   // 18.5
+            services.Remove(scheduledSender);
+
             // 15.6: gerçek saat yerine donmuş sahte saat. Servis (PurgeExpiredAsync) ve görünüm (rozet) ikisi de buradan okur.
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Clock);

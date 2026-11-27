@@ -13,7 +13,6 @@ using MYAcademy_IdentityEmailProject.Services;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Net;
-using System.Security.Claims;
 using System.Text.RegularExpressions;
 
 namespace MYAcademy_IdentityEmailProject.Controllers
@@ -22,31 +21,35 @@ namespace MYAcademy_IdentityEmailProject.Controllers
     {
         private const int PageSize = 10;
         private const int BulkLimit = 100;
+        private const int MaxScheduleDays = 365;   // 18.4: en fazla 1 yıl sonrasına zamanlanabilir
 
         private readonly EmailContext _context;
         private readonly UserManager<AppUser> _userManager;
         private readonly IHtmlSanitizer _sanitizer;
         private readonly IMailboxCounter _counter;
-        private readonly IMailService _mailService;
         private readonly ILogger<MessageController> _logger;
         private readonly IAttachmentStorage _attachmentStorage;
         private readonly ISendRateLimiter _sendLimiter;   // 17.4
         private readonly ITrashService _trash;   // 15.3: kalıcı silme (arka plan servisiyle ortak)
+        private readonly IMessageSender _sender;   // 18.2: gönderim (arka plan servisiyle ortak)
+        private readonly TimeProvider _time;   // 18.4: zamanlama karşılaştırmaları (Kavram 3)
 
         public MessageController(EmailContext context, UserManager<AppUser> userManager,
                                  IHtmlSanitizer sanitizer, IMailboxCounter counter,
-                                 IMailService mailService, ILogger<MessageController> logger,
-                                 IAttachmentStorage attachmentStorage, ITrashService trash, ISendRateLimiter sendLimiter)
+                                 ILogger<MessageController> logger,
+                                 IAttachmentStorage attachmentStorage, ITrashService trash, ISendRateLimiter sendLimiter,
+                                 IMessageSender sender, TimeProvider time)
         {
             _context = context;
             _userManager = userManager;
             _sanitizer = sanitizer;
             _counter = counter;
-            _mailService = mailService;
             _logger = logger;
             _attachmentStorage = attachmentStorage;
             _trash = trash;
             _sendLimiter = sendLimiter;
+            _sender = sender;
+            _time = time;
         }
         /* =====================================================================
         MESAJ LİSTELERİ (7.2 – 7.4, ortak motor 9.2)
@@ -65,6 +68,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         public Task<IActionResult> Archive(MailboxQuery query) => ListAsync(MailboxView.Archive, query);
 
         public Task<IActionResult> Drafts(MailboxQuery query) => ListAsync(MailboxView.Drafts, query);
+
+        public Task<IActionResult> Scheduled(MailboxQuery query) => ListAsync(MailboxView.Scheduled, query);   // 18.3
 
         // Liste sayfasındaki çip sayıları: aynı kapsamla, sayfa yenilenmeden (7.8).
         // view: hangi listenin sayıları (kullanıcının kendi satırlarıyla sınırlı, BuildScope'a bakın).
@@ -111,6 +116,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 MailboxView.Trash => i => i.DeletedDate,
                 // Taslağın gönderim tarihi yok: son düzenleme anı (9.1, Kavram 1)
                 MailboxView.Drafts => i => (DateTime?)i.Message.UpdatedDate,
+                MailboxView.Scheduled => i => i.Message.ScheduledFor,   // 18.3: gönderim zamanına göre
                 _ => i => i.Message.SentDate
             };
 
@@ -208,6 +214,8 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 // Arşiv: gelen + arşivlenmiş + çöpte değil. Folder hâlâ Inbox (12.1, Kavram 2)
                 MailboxView.Archive => scoped.Where(i => i.Folder == MailFolder.Inbox && i.ArchivedDate != null && i.DeletedDate == null),
                 MailboxView.Drafts => scoped.Where(i => i.Folder == MailFolder.Draft && i.DeletedDate == null),
+                // 18.3: gönderenin bekleyen kopyası; çöpe atılan zamanlanmış mesaj burada görünmez (Kavram 1)
+                MailboxView.Scheduled => scoped.Where(i => i.Folder == MailFolder.Scheduled && i.DeletedDate == null),
                 _ => throw new NotSupportedException($"{view} görünümü henüz tanımlı değil.")
             };
 
@@ -315,7 +323,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             }
 
             // Taslaklar yıldızlanmaz (9.1, karar 2-A). Arayüzde buton olmaması yetmez (Kavram 3).
-            if (item.Folder == MailFolder.Draft)
+            if (item.Folder is MailFolder.Draft or MailFolder.Scheduled)   // 18.3: zamanlanmış da henüz gönderilmedi
             {
                 return BadRequest();
             }
@@ -582,6 +590,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
         public async Task<IActionResult> CreateMessage(CreateMessageViewModel model, string? intent)
         {
             bool isDraft = intent == "draft";
+            bool isSchedule = intent == "schedule";   // 18.4: tam doğrulama + ileri tarih (Kavram 1)
             string safeBody = _sanitizer.Sanitize(model.Body ?? string.Empty);
 
             // Üç alan BİRLİKTE ayrıştırılır: toplam sayı ve alanlar arası tekrar ancak böyle görülür
@@ -618,6 +627,10 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 if (!string.IsNullOrEmpty(model.Body) && !HasVisibleText(safeBody))
                 {
                     ModelState.AddModelError(nameof(model.Body), "Mesaj içeriği boş olamaz.");
+                }
+                if (isSchedule)
+                {
+                    ValidateSchedule(model.ScheduledFor);   // 18.4
                 }
             }
 
@@ -671,8 +684,12 @@ namespace MYAcademy_IdentityEmailProject.Controllers
                 CopyForwardedInto(draft, forwarded);
             }
 
-            return isDraft
-                ? await SaveDraftAsync(model, safeBody, draft, recipients)
+            if (isDraft)
+            {
+                return await SaveDraftAsync(model, safeBody, draft, recipients);
+            }
+            return isSchedule
+                ? await ScheduleAsync(model, safeBody, draft, recipients)
                 : await SendMessageAsync(model, safeBody, draft, recipients);
         }
 
@@ -710,100 +727,132 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             return RedirectToAction(nameof(CreateMessage), new { draftId = draft.MessageId });
         }
 
-        // Gönder: yeni mesaj ya da taslaktan gönderim (karar 4-A: aynı satır) — çok alıcılı (12.10)
-        private async Task<IActionResult> SendMessageAsync(CreateMessageViewModel model, string safeBody, Message? draft, RecipientList recipients)
+        // 18.6: Zamanlamayı iptal et → mesaj taslağa döner ve düzenleme ekranı açılır (karar 2-A; Kavram 2).
+        // id = MessageId. Koşul, arka plan servisinin sahiplenmesiyle AYNI: ikisinden yalnızca biri kazanır (Kavram 1).
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CancelSchedule(int id)
         {
-            string senderId = _userManager.GetUserId(User)!;
+            string userId = _userManager.GetUserId(User)!;
+
+            int changed = await _context.MailboxItems
+                .Where(i => i.MessageId == id
+                         && i.UserId == userId                   // sahiplik sorgunun içinde (IDOR'a karşı)
+                         && i.Folder == MailFolder.Scheduled
+                         && i.DeletedDate == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.Folder, MailFolder.Draft));
+
+            if (changed == 0)
+            {
+                // Gönderilmiş, çöpe atılmış, zaten iptal edilmiş ya da başkasının: hepsine aynı cevap
+                TempData["Toast"] = "Bu mesajın zamanlaması artık iptal edilemiyor: gönderilmiş ya da silinmiş olabilir.";
+                TempData["ToastIcon"] = "bi-info-circle";
+                return RedirectToAction(nameof(Scheduled));
+            }
+
+            // Temizlik (Kavram 3): belirleyici olan klasördü; bu adım başarısız olsa da mesaj güvende
+            await _context.Messages
+                .Where(m => m.MessageId == id && m.SenderId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.ScheduledFor, (DateTime?)null));
+
+            TempData["Toast"] = "Zamanlama iptal edildi. Mesaj taslaklarınıza taşındı.";
+            TempData["ToastIcon"] = "bi-x-circle";
+            return RedirectToAction(nameof(CreateMessage), new { draftId = id });
+        }
+
+        // 18.4: Zamanla = tam doğrulanmış mesaj; gönderenin kopyası Scheduled klasöründe bekler (18.3 Kavram 1).
+        // Gönderimi 18.5'teki arka plan servisi yapar.
+        private async Task<IActionResult> ScheduleAsync(CreateMessageViewModel model, string safeBody, Message? draft, RecipientList recipients)
+        {
+            string userId = _userManager.GetUserId(User)!;
             var now = DateTime.Now;
 
-            // 1) Kayıtlı alıcılar TEK sorguda (Kavram 1). FindByEmailAsync döngüsü 20 sorgu olurdu (N+1).
-            //    Identity e-postaları NormalizedEmail sütununda büyük harfle tutar; aynı normalleştirmeyle ararız.
-            var normalized = recipients.All.Select(r => _userManager.NormalizeEmail(r.Email)).ToList();
-            var registered = await _userManager.Users
-                .Where(u => normalized.Contains(u.NormalizedEmail!))          // SQL: WHERE NormalizedEmail IN (...)
-                .Select(u => new { u.Id, u.Email, u.NormalizedEmail, u.Name, u.Surname })
-                .ToDictionaryAsync(u => u.NormalizedEmail!);
+            draft ??= NewDraft(userId, now);
+            draft.Subject = model.Subject.Trim();
+            draft.Body = safeBody;
+            draft.CategoryId = model.CategoryId;
+            draft.UpdatedDate = now;
+            draft.ScheduledFor = model.ScheduledFor!.Value;   // ValidateSchedule null olmadığını garanti etti
 
-            Message message;
-            if (draft == null)
-            {
-                message = new Message { SenderId = senderId, CreatedDate = now };
-                message.MailboxItems.Add(new MailboxItem { UserId = senderId, Folder = MailFolder.Sent, IsRead = true });
-                _context.Messages.Add(message);
-            }
-            else
-            {
-                // Taslak → gönderilmiş mesaj: Id aynı, gönderenin kopyası Draft'tan Sent'e geçer (9.6)
-                message = draft;
-                message.MailboxItems.Single(i => i.UserId == senderId && i.Folder == MailFolder.Draft).Folder = MailFolder.Sent;
-                message.Recipients.Clear();
-            }
-
-            message.Subject = model.Subject.Trim();
-            message.Body = safeBody;
-            message.CategoryId = model.CategoryId;
-            message.UpdatedDate = now;
-            message.SentDate = now;
-
-            // 2) Her alıcı için bir alıcı satırı (türüyle); her KAYITLI alıcı için bir Gelen kopyası.
-            //    RecipientList zaten tekilleştirdi (12.9): aynı kullanıcıya iki kopya oluşamaz (benzersiz indeks, 5.3).
-            var external = new List<string>();
-            var internalNames = new List<string>();
-
+            // Alıcılar taslaktaki gibi ham adresler (9.6): kayıtlı kullanıcıyla eşleştirme GÖNDERİM anında (Kavram 2)
+            draft.Recipients.Clear();
             foreach (var (email, type) in recipients.All)
             {
-                if (registered.TryGetValue(_userManager.NormalizeEmail(email), out var user))
-                {
-                    message.Recipients.Add(new MessageRecipient { Email = user.Email!, UserId = user.Id, RecipientType = type });
-                    message.MailboxItems.Add(new MailboxItem { UserId = user.Id, Folder = MailFolder.Inbox, IsRead = false });
-
-                    string fullName = $"{user.Name} {user.Surname}".Trim();
-                    internalNames.Add(fullName.Length > 0 ? fullName : user.Email!);
-                }
-                else
-                {
-                    message.Recipients.Add(new MessageRecipient { Email = email, UserId = null, RecipientType = type });
-                    external.Add(email);
-                }
+                draft.Recipients.Add(new MessageRecipient { Email = email, UserId = null, RecipientType = type });
             }
 
-            // Hepsi tek SaveChanges = tek transaction (5.4)
+            draft.MailboxItems.Single(i => i.UserId == userId && i.Folder == MailFolder.Draft).Folder = MailFolder.Scheduled;
             await _context.SaveChangesAsync();
 
-            // 3) Dış alıcılar: kayıttan SONRA, tek SMTP mailiyle (8.1: geri alınamaz işlem en sonda; karar 5-A)
-            bool externalOk = external.Count == 0 || await TrySendExternalAsync(message, recipients, external);
+            TempData["Toast"] = $"Mesajınız {draft.ScheduledFor.Value.ToString("d MMMM dddd HH:mm", Tr)} tarihinde gönderilecek.";
+            TempData["ToastIcon"] = "bi-clock";
+            return RedirectToAction(nameof(Scheduled));
+        }
 
-            // 4) Toast: kime gittiğini açıkça söyler (8.4). Tek alıcıda eski, ayrıntılı metin.
-            if (recipients.Count == 1)
+        // 18.4: En az 1 dakika sonrası, en fazla 1 yıl sonrası. Saat arka plan servisiyle AYNI kaynaktan (Kavram 3).
+        private void ValidateSchedule(DateTime? scheduledFor)
+        {
+            var now = _time.GetLocalNow().DateTime;
+
+            if (scheduledFor == null)
             {
-                TempData["Toast"] = internalNames.Count == 1
-                    ? $"Mesajınız gönderildi · Alıcı: {internalNames[0]} (Mailora)"
-                    : externalOk
-                        ? $"Mesajınız e-posta olarak gönderildi · Alıcı: {external[0]} (Mailora dışı)"
-                        : $"Mesajınız kaydedildi ancak {external[0]} adresine iletilemedi.";
+                ModelState.AddModelError(nameof(CreateMessageViewModel.ScheduledFor), "Gönderim tarihini ve saatini seçin.");
+            }
+            else if (scheduledFor.Value < now.AddMinutes(1))
+            {
+                ModelState.AddModelError(nameof(CreateMessageViewModel.ScheduledFor), "Gönderim zamanı en az 1 dakika sonrası olmalı.");
+            }
+            else if (scheduledFor.Value > now.AddDays(MaxScheduleDays))
+            {
+                ModelState.AddModelError(nameof(CreateMessageViewModel.ScheduledFor), "Mesaj en fazla 1 yıl sonrasına zamanlanabilir.");
+            }
+        }
+
+        // Gönder: yeni mesaj ya da taslaktan gönderim (karar 4-A: aynı satır) — çok alıcılı (12.10).
+        // 18.2: Gönderimin çekirdeği MessageSender'da. Burada sadece formdan mesaja, sonuçtan toast'a çeviri.
+        private async Task<IActionResult> SendMessageAsync(CreateMessageViewModel model, string safeBody, Message? draft, RecipientList recipients)
+        {
+            var now = DateTime.Now;
+
+            // Her gönderim bir taslağın gönderimi (18.2 Kavram 1): yeni mesajda önce bellekte bir taslak oluşur
+            draft ??= NewDraft(_userManager.GetUserId(User)!, now);
+            draft.Subject = model.Subject.Trim();
+            draft.Body = safeBody;
+            draft.CategoryId = model.CategoryId;
+
+            var outcome = await _sender.SendAsync(draft, recipients, now);
+
+            // Toast: kime gittiğini açıkça söyler (8.4). Tek alıcıda eski, ayrıntılı metin.
+            if (outcome.RecipientCount == 1)
+            {
+                TempData["Toast"] = outcome.InternalNames.Count == 1
+                    ? $"Mesajınız gönderildi · Alıcı: {outcome.InternalNames[0]} (Mailora)"
+                    : outcome.ExternalOk
+                        ? $"Mesajınız e-posta olarak gönderildi · Alıcı: {outcome.External[0]} (Mailora dışı)"
+                        : $"Mesajınız kaydedildi ancak {outcome.External[0]} adresine iletilemedi.";
             }
             else
             {
                 var parts = new List<string>();
-                if (internalNames.Count > 0) parts.Add($"{internalNames.Count} Mailora");
-                if (external.Count > 0) parts.Add($"{external.Count} e-posta");
+                if (outcome.InternalNames.Count > 0) parts.Add($"{outcome.InternalNames.Count} Mailora");
+                if (outcome.External.Count > 0) parts.Add($"{outcome.External.Count} e-posta");
 
-                TempData["Toast"] = externalOk
-                    ? $"Mesajınız {recipients.Count} alıcıya gönderildi ({string.Join(", ", parts)})."
-                    : $"Mesajınız Mailora alıcılarına iletildi ancak {external.Count} dış adrese gönderilemedi.";
+                TempData["Toast"] = outcome.ExternalOk
+                    ? $"Mesajınız {outcome.RecipientCount} alıcıya gönderildi ({string.Join(", ", parts)})."
+                    : $"Mesajınız Mailora alıcılarına iletildi ancak {outcome.External.Count} dış adrese gönderilemedi.";
             }
 
-            if (!externalOk)
+            if (!outcome.ExternalOk)
             {
                 TempData["ToastIcon"] = "bi-exclamation-triangle";
             }
-            else if (external.Count > 0)
+            else if (outcome.External.Count > 0)
             {
                 TempData["ToastIcon"] = "bi-envelope-arrow-up";
             }
 
             // Post-Redirect-Get: gönderilen mesajın detayı
-            return RedirectToAction(nameof(Detail), new { id = message.MessageId });
+            return RedirectToAction(nameof(Detail), new { id = draft.MessageId });
         }
 
         /* =====================================================================
@@ -1197,66 +1246,7 @@ namespace MYAcademy_IdentityEmailProject.Controllers
             string text = WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]+>", " "));
             return !string.IsNullOrWhiteSpace(text);
         }
-        // Dış alıcılara TEK SMTP maili (12.10). Başlıkta Kime/Bilgi listeleri TAM, Gizli YOK; zarfta sadece dış adresler.
-        // Başarısızlık kaydı geri almaz; sadece false döner (8.1).
-        private async Task<bool> TrySendExternalAsync(Message message, RecipientList recipients, List<string> externalEnvelope)
-        {
-            string senderName = SenderDisplayName();
-            string? senderEmail = User.FindFirstValue(ClaimTypes.Email);
 
-            // Ekler (12.18): yüklenenler ve İlet ile kopyalananlar artık veritabanında, mesajın Id'siyle.
-            // Satırı olup dosyası olmayan ek atlanır ve loglanır (12.17'deki indirmeyle aynı tutum).
-            var attachments = new List<MailAttachment>();
-            var rows = await _context.Attachments
-                .Where(a => a.MessageId == message.MessageId)
-                .OrderBy(a => a.AttachmentId)
-                .Select(a => new { a.AttachmentId, a.FileName, a.ContentType, a.StoredName })
-                .ToListAsync();
-
-            foreach (var row in rows)
-            {
-                string? path = _attachmentStorage.GetPath(row.StoredName);
-                if (path == null)
-                {
-                    _logger.LogWarning("SMTP eki diskte bulunamadı. AttachmentId: {AttachmentId}", row.AttachmentId);
-                    continue;
-                }
-                attachments.Add(new MailAttachment(row.FileName, row.ContentType, path));
-            }
-
-            string html = message.Body +
-                "<hr style=\"border:none;border-top:1px solid #ddd;margin:24px 0 12px\">" +
-                "<p style=\"color:#888;font-size:12px\">Bu e-posta <b>" + WebUtility.HtmlEncode(senderName) +
-                "</b> tarafından Mailora üzerinden gönderildi. Yanıtınız doğrudan göndericiye iletilir.</p>";
-
-            try
-            {
-                await _mailService.SendToManyAsync(
-                    headerTo: recipients.To,
-                    headerCc: recipients.Cc,
-                    envelopeRecipients: externalEnvelope,
-                    subject: message.Subject,
-                    body: html,
-                    isHtml: true,
-                    fromName: $"{senderName} (Mailora)",
-                    replyToEmail: senderEmail,
-                    attachments: attachments);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                // Loga kişisel veri (alıcı adresleri) değil, sadece Id ve sayı (8.4)
-                _logger.LogError(ex, "Dış adreslere gönderim başarısız. MessageId: {MessageId}, Alıcı sayısı: {Count}",
-                                 message.MessageId, externalEnvelope.Count);
-                return false;
-            }
-        }
-
-        // Gönderenin adı claim'lerden (6.3): veritabanı sorgusu yok.
-        private string SenderDisplayName()
-        {
-            string fullName = $"{User.FindFirstValue(ClaimTypes.GivenName)} {User.FindFirstValue(ClaimTypes.Surname)}".Trim();
-            return fullName.Length > 0 ? fullName : (User.Identity?.Name ?? "Bir Mailora kullanıcısı");
-        }
+        // Dış alıcılara SMTP gönderimi ve gönderen bilgisi 18.2'de MessageSender'a taşındı.
     }
 }

@@ -38,5 +38,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
         // İstemciden gelir: sunucu ikisini birlikte doğrular (Kavram 2).
         public int? ForwardOf { get; set; }
         public List<int> ForwardAttachmentIds { get; set; } = new();
+        // 18.4: "Zamanla" ile seçilen gönderim anı (sunucu yerel saati). Sadece intent=schedule'da kullanılır.
+        public DateTime? ScheduledFor { get; set; }
     }
 }

@@ -39,13 +39,14 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Trash => "Çöp Kutusu",
             MailboxView.Drafts => "Taslaklar",
             MailboxView.Archive => "Arşiv",
+            MailboxView.Scheduled => "Zamanlanmış",
             _ => View.ToString()
         };
 
         public string SearchPlaceholder => View switch
         {
             MailboxView.Inbox or MailboxView.Archive => "Gönderen, konu veya içerik ara",
-            MailboxView.Sent or MailboxView.Drafts => "Alıcı, konu veya içerik ara",
+            MailboxView.Sent or MailboxView.Drafts or MailboxView.Scheduled => "Alıcı, konu veya içerik ara",
             _ => "Kişi, konu veya içerik ara"
         };
 
@@ -57,6 +58,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Trash => "bi-trash3",
             MailboxView.Drafts => "bi-file-earmark-text",
             MailboxView.Archive => "bi-archive",
+            MailboxView.Scheduled => "bi-clock",
             _ => "bi-inbox"
         };
 
@@ -68,6 +70,7 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Trash => "Çöp kutunuz boş",
             MailboxView.Drafts => "Taslağınız yok",
             MailboxView.Archive => "Arşiviniz boş",
+            MailboxView.Scheduled => "Zamanlanmış mesajınız yok",
             _ => "Burada mesaj yok"
         };
 
@@ -79,15 +82,16 @@ namespace MYAcademy_IdentityEmailProject.Models.Messages
             MailboxView.Trash => "Silinen mesajlar siz kalıcı olarak silene kadar burada tutulur.",
             MailboxView.Archive => "Gelen Kutusu'ndan arşivlediğiniz mesajlar burada saklanır.",
             MailboxView.Drafts => "Yeni Mesaj sayfasında \"Taslak Olarak Kaydet\" dediğiniz mesajlar burada listelenir.",
+            MailboxView.Scheduled => "Yeni Mesaj sayfasında \"Zamanla\" ile ileri bir tarihe kurduğunuz mesajlar gönderilene kadar burada bekler.",
             _ => ""
         };
 
         // Okundu/okunmadı bilgisi anlamlı mı? Gönderilen ve taslak kopyalar hep "okundu" (8.2).
         // false ise Okunmamış çipi, rozeti ve okundu/okunmadı toplu butonları gizlenir.
-        public bool TracksReadState => View is not (MailboxView.Sent or MailboxView.Drafts);
+        public bool TracksReadState => View is not (MailboxView.Sent or MailboxView.Drafts or MailboxView.Scheduled);
 
         // "Yıldızlı" çipi anlamlı mı? Yıldızlı sayfasında zaten hepsi yıldızlı; taslaklarda yıldız yok (9.1, karar 2-A).
-        public bool ShowsStarFilter => View is not (MailboxView.Starred or MailboxView.Drafts);
+        public bool ShowsStarFilter => View is not (MailboxView.Starred or MailboxView.Drafts or MailboxView.Scheduled);
 
         // Çöp Kutusu'na özel butonlar: geri al, kalıcı sil, çöpü boşalt (9.5)
         public bool IsTrash => View == MailboxView.Trash;

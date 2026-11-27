@@ -18,6 +18,7 @@ public sealed class FakeMailService : IMailService
     public Task SendAsync(string toEmail, string subject, string body, bool isHtml = false,
                           string? fromName = null, string? replyToEmail = null)
     {
+        ThrowIfFailureRequested([toEmail]);
         _sent.Enqueue(new SentMail([toEmail], [toEmail], [], subject, body, 0));
         return Task.CompletedTask;
     }
@@ -30,10 +31,22 @@ public sealed class FakeMailService : IMailService
     {
         // Gerçek servisle aynı davranış: zarf boşsa gönderilecek bir şey yok (12.10)
         var envelope = envelopeRecipients.ToList();
+        ThrowIfFailureRequested(envelope);
         if (envelope.Count > 0)
         {
             _sent.Enqueue(new SentMail(envelope, headerTo.ToList(), headerCc.ToList(), subject, body, attachments?.Count ?? 0));
         }
         return Task.CompletedTask;
+    }
+
+    // 18.7 (Kavram 1): Hata, paylaşılan bir bayrakla değil ADRESLE istenir: sadece bu adresi kullanan test etkilenir.
+    public const string FailingDomain = "@smtp-fail.test";
+
+    private static void ThrowIfFailureRequested(IEnumerable<string> envelope)
+    {
+        if (envelope.Any(e => e.EndsWith(FailingDomain, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Sahte SMTP hatası (test).");
+        }
     }
 }

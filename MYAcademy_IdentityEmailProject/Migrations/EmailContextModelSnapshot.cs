@@ -298,6 +298,12 @@ namespace MYAcademy_IdentityEmailProject.Migrations
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("ExternalDeliveryFailed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ScheduledFor")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("SenderId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -316,6 +322,8 @@ namespace MYAcademy_IdentityEmailProject.Migrations
                     b.HasKey("MessageId");
 
                     b.HasIndex("CategoryId");
+
+                    b.HasIndex("ScheduledFor");
 
                     b.HasIndex("SenderId");
 

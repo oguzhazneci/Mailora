@@ -69,6 +69,9 @@ builder.Services.AddHostedService<OrphanAttachmentCleaner>();   // 12.19: sahips
 builder.Services.AddHostedService<TrashPurger>();             // 15.4: 30 günü dolan çöpü kalıcı siler
 builder.Services.AddSingleton(TimeProvider.System);           // 15.4: gerçek saat; testte değiştirilir (15.6)
 builder.Services.AddScoped<ITrashService, TrashService>();   // 15.3: kalıcı silme (controller + 15.4 arka plan servisi)
+builder.Services.AddScoped<IMessageSender, MessageSender>();   // 18.2: gönderim (controller + 18.5 arka plan servisi)
+builder.Services.AddScoped<IScheduledSendService, ScheduledSendService>();   // 18.5: zamanı geleni gönder (kural)
+builder.Services.AddHostedService<ScheduledSender>();                        // 18.5: 30 sn'de bir (zamanlama)
 builder.Services.AddMailoraRateLimiting(builder.Configuration);   // 17.2: istek sınırlama kuralları
 builder.Services.AddSingleton<ISendRateLimiter, SendRateLimiter>();   // 17.4: gönderme sınırı (action içinden, karar 7-B)
 

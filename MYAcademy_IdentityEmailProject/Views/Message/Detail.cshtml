@@ -14,6 +14,7 @@
     {
         MailFolder.Sent => "sent",
         MailFolder.Draft => "drafts",
+        MailFolder.Scheduled => "scheduled",   // 18.6
         _ => "inbox"
     };
     Layout = "_MessageLayout";
@@ -22,7 +23,11 @@
     var senderName = $"{sender.Name} {sender.Surname}".Trim();
     if (senderName.Length == 0) senderName = sender.Email ?? "Bilinmeyen gönderen";
 
-    var sentDate = msg.SentDate ?? msg.UpdatedDate;
+    // 18.6: zamanlanmış mesajda gösterilecek tarih, gönderim zamanı
+    var sentDate = msg.SentDate ?? msg.ScheduledFor ?? msg.UpdatedDate;
+    bool isScheduled = !inTrash && Model.Item.Folder == MailFolder.Scheduled && msg.ScheduledFor != null;
+    // 18.6 (karar 4-A): zamanlanmış gönderimde dış alıcılara SMTP başarısız oldu. Sadece gönderene gösterilir.
+    bool externalFailed = Model.Item.Folder == MailFolder.Sent && msg.ExternalDeliveryFailed;
 
     // 12.11: alıcılar BAKAN KİŞİYE göre süzülür. Item benim kopyam olduğu için Item.UserId = bakan kişi.
     var rv = RecipientView.For(msg, Model.Item.UserId);
@@ -32,12 +37,14 @@
     {
         MailFolder.Inbox => "Gelen Kutusu",
         MailFolder.Sent => "Gönderilenler",
+        MailFolder.Scheduled => "Zamanlanmış",   // 18.6
         _ => "Taslaklar"
     };
     string backAction = inTrash ? "Trash" : inArchive ? "Archive" : Model.Item.Folder switch
     {
         MailFolder.Sent => "Sent",
         MailFolder.Draft => "Drafts",
+        MailFolder.Scheduled => "Scheduled",   // 18.6
         _ => "Inbox"
     };
 
@@ -110,6 +117,40 @@
         .pv-att .dl {
             color: var(--muted, #85899B);
         }
+
+    /* Zamanlanmış mesaj ve dış gönderim uyarısı şeritleri (18.6) */
+    .pv-banner {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 0 0 16px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: var(--lavender, #F1EFFB);
+        color: var(--accent-dark, #5A4FB0);
+        font-size: 13.5px;
+    }
+
+        .pv-banner span {
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .pv-banner form {
+            margin: 0;
+        }
+
+        .pv-banner.warn {
+            background: color-mix(in srgb, #C2476B 9%, white);
+            color: #A33A5A;
+        }
+
+    .pv-when {
+        display: block;
+        font-size: .75rem;
+        color: var(--muted, #85899B);
+    }
 </style>
 <div class="msg-page">
     <div class="mp-top">
@@ -136,10 +177,30 @@
 
     <div class="mp-grid">
         <article class="mp-card">
+            @* 18.6: gönderilmemiş mesaj — zamanı ve iptal (karar 2-A: iptal → taslak → düzenle) *@
+            @if (isScheduled)
+            {
+                <div class="pv-banner">
+                    <i class="bi bi-clock"></i>
+                    <span>Bu mesaj <b>@msg.ScheduledFor!.Value.ToString("d MMMM yyyy dddd HH:mm", tr)</b> tarihinde gönderilecek.</span>
+                    <form method="post" asp-controller="Message" asp-action="CancelSchedule" asp-route-id="@msg.MessageId"
+                          onsubmit="return confirm('Zamanlama iptal edilsin mi? Mesaj taslaklarınıza taşınacak ve düzenleyebileceksiniz.');">
+                        <button type="submit" class="btn-soft"><i class="bi bi-x-circle"></i> Zamanlamayı iptal et</button>
+                    </form>
+                </div>
+            }
+            @* 18.6 (karar 4-A): gönderen o an ekranda değildi; uyarı mesajın üzerinde kalır *@
+            @if (externalFailed)
+            {
+                <div class="pv-banner warn">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>Bu zamanlanmış mesaj Mailora alıcılarına teslim edildi, ancak <b>Mailora dışındaki alıcılara iletilemedi</b>. Göndermek için mesajı <b>İlet</b> ile yeniden gönderebilirsiniz.</span>
+                </div>
+            }
             <div class="pv-subject-row">
                 <h1 class="pv-subject">@ViewData["Title"]</h1>
                 @* Yıldız: benim kopyam üzerinde (layout'taki dinleyici, 7.6). Taslaklarda yok (9.1, karar 2-A). *@
-                @if (Model.Item.Folder != MailFolder.Draft)
+                @if (Model.Item.Folder is not (MailFolder.Draft or MailFolder.Scheduled))   // 18.6: gönderilmemiş mesaj yıldızlanmaz
                 {
                     <button class="star-btn @(Model.Item.IsStarred ? "on" : "")" type="button" data-star data-id="@Model.Item.MailboxItemId"
                             aria-label="@(Model.Item.IsStarred ? "Yıldızı kaldır" : "Yıldızla")">
@@ -174,14 +235,18 @@
                         </div>
                     }
                 </div>
-            <div class="dt">
-                <b>@(sentDate.ToString("d MMMM yyyy", tr))</b>
-                @(sentDate.ToString("dddd HH:mm", tr))
+                <div class="dt">
+                    @if (isScheduled)
+                    {
+                        <span class="pv-when">Gönderilecek</span>
+                    }
+                    <b>@(sentDate.ToString("d MMMM yyyy", tr))</b>
+                    @(sentDate.ToString("dddd HH:mm", tr))
+                </div>
             </div>
-        </div>
 
-        @* Temizlenmiş HTML: biçimlendirme kalır, script ve olay özellikleri silinmiştir (Kavram 5). *@
-        <div class="pv-body">@Html.Raw(Model.SafeBodyHtml)</div>
+            @* Temizlenmiş HTML: biçimlendirme kalır, script ve olay özellikleri silinmiştir (Kavram 5). *@
+            <div class="pv-body">@Html.Raw(Model.SafeBodyHtml)</div>
 
             @* Ekler (12.17): her indirme DownloadAttachment'taki yetki kontrolünden geçer *@
             @if (Model.Attachments.Count > 0)
@@ -205,8 +270,8 @@
                 </div>
             }
 
-        @* Yanıtla / İlet = önceden doldurulmuş Yeni Mesaj sayfası (9.7, Kavram 1) *@
-        @if (canRespond)
+            @* Yanıtla / İlet = önceden doldurulmuş Yeni Mesaj sayfası (9.7, Kavram 1) *@
+            @if (canRespond)
             {
                 <div class="pv-actions">
                     <a class="btn-soft" asp-controller="Message" asp-action="CreateMessage" asp-route-replyTo="@msg.MessageId">
@@ -224,29 +289,29 @@
                         <i class="bi bi-forward"></i> İlet
                     </a>
                 </div>
-        }
-    </article>
+            }
+        </article>
 
-    <aside class="mp-side">
-        <div class="mp-side-card">
-            <h6>Mesaj Bilgileri</h6>
-            <ul class="mp-facts" style="margin-top:0;padding-top:0;border-top:0">
-                <li>
-                    <span class="k"><i class="bi bi-tag"></i> Kategori</span>
-                    <span class="v">@(msg.Category?.CategoryName ?? "—")</span>
-                </li>
-                <li>
-                    <span class="k"><i class="bi bi-folder2"></i> Klasör</span>
-                    <span class="v">@folderName</span>
-                </li>
-                <li>
-                    <span class="k"><i class="bi bi-people"></i> Alıcı sayısı</span>
-                    <span class="v">@rv.Count</span>
-                </li>
-            </ul>
-        </div>
-    </aside>
-</div>
+        <aside class="mp-side">
+            <div class="mp-side-card">
+                <h6>Mesaj Bilgileri</h6>
+                <ul class="mp-facts" style="margin-top:0;padding-top:0;border-top:0">
+                    <li>
+                        <span class="k"><i class="bi bi-tag"></i> Kategori</span>
+                        <span class="v">@(msg.Category?.CategoryName ?? "—")</span>
+                    </li>
+                    <li>
+                        <span class="k"><i class="bi bi-folder2"></i> Klasör</span>
+                        <span class="v">@folderName</span>
+                    </li>
+                    <li>
+                        <span class="k"><i class="bi bi-people"></i> Alıcı sayısı</span>
+                        <span class="v">@rv.Count</span>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+    </div>
 </div>
 @section Scripts {
     <script>
