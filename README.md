@@ -32,7 +32,7 @@ ASP.NET Core MVC ve ASP.NET Core Identity ile geliştirilmiş, tarayıcı üzeri
 | ![Genel Bakış](docs/screenshots/01-genel-bakis.png) | ![Gelen Kutusu](docs/screenshots/02-gelen-kutusu.png) |
 | **Genel Bakış:** son 30 günün özeti ve grafikler | **Gelen Kutusu:** arama, kategori ve durum filtreleri, toplu işlemler |
 | ![Mesaj detayı](docs/screenshots/03-mesaj-detayi.png) | ![Yeni mesaj](docs/screenshots/04-yeni-mesaj.png) |
-| **Mesaj detayı:** Kime / Bilgi satırları ve ekler | **Yeni mesaj:** alıcı kartları, zengin metin editörü, ek yükleme |
+| **Mesaj detayı:** gönderen, alıcılar ve yanıt seçenekleri | **Yeni mesaj:** alıcı kartları, zengin metin editörü, ek yükleme |
 | ![Gizli alıcı görünümü](docs/screenshots/05-gizli-alici.png) | ![Bildirimler](docs/screenshots/06-bildirimler.png) |
 | **Gizlilik:** Gizli alıcı yalnızca kendini görür | **Bildirimler:** yeni mesaj sayfa yenilenmeden gelir |
 | ![Profil](docs/screenshots/07-profil.png) | ![Kayıt ve doğrulama](docs/screenshots/08-dogrulama-kodu.png) |
@@ -317,6 +317,7 @@ Bunlar bilinçli olarak kapsam dışında bırakıldı:
 - Arka plan servisleri (ek temizleyici, çöp temizleyici, zamanlanmış gönderici) uygulamanın **içinde** çalışır; IIS gibi boşta kalan uygulamayı kapatan ortamlarda turlar seyrekleşebilir ve zamanlanmış mesajlar gecikebilir.
 - Tarihler sunucunun **yerel saatiyle** (`DateTime.Now`) saklanır ve gösterilir; zamanlanmış gönderimin saati de sunucunun saat dilimine göredir. Farklı saat dilimindeki kullanıcılar için UTC'ye geçilmelidir.
 - Mesaj detayını açmak mesajı "okundu" yapar; bu, GET isteğinin bilinçli tek yan etkisidir.
+- Satırları listeden kaldıran toplu işlemlerden (örneğin çöpten geri yükleme) sonra başlıktaki sayaçlar hemen güncellenir, ama alttaki sayfalama metni ("1–8 / 8 mesaj") sayfa yenilenene kadar eski sayıyı gösterir.
 - SMTP'siz Development modunda dış adrese gönderim bildirimi "gönderildi" der, ama e-posta yalnızca konsola yazılmıştır.
 - Hata loglarına eklenen istisna (exception) metinleri, SMTP sunucusunun döndürdüğü hata mesajında alıcı adresi içerebilir.
 

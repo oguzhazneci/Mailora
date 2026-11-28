@@ -97,7 +97,7 @@ public class RecipientListTests
 
     [Theory]
     [InlineData("umut@mailora.test")]
-    [InlineData("ada.yilmaz+is@alt.ornek.com")]
+    [InlineData("umut.sozeri+is@alt.ornek.com")]
     [InlineData("x@y.co")]
     public void IsValidAddress_WellFormedAddress_ReturnsTrue(string address)
     {
